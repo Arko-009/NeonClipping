@@ -632,6 +632,9 @@ sources.attach(app,DATA,probe)
 import saved_clips
 saved_clips.attach(app,SAVED,probe)
 
+import youtube_uploader
+youtube_uploader.attach(app,ROOT,SAVED)
+
 if __name__=='__main__':
  lan=os.environ.get('NEONCLIPPING_LAN')=='1'      # phone remote: listen on the home network (PIN required, see phone.py); default is this PC only
  if lan:

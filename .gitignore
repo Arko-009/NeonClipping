@@ -18,6 +18,8 @@
 !docs/guide/*
 highlights_v1.py
 __pycache__/
+client_secrets.json
+token.json
 !docs/*.txt
 !live/
 !donate.json

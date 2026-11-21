@@ -117,6 +117,106 @@ async function refreshSources(){
   host.append(card);
  }
 }
+let currentYtClip=null,ytPollTimer=null;
+async function checkYouTubeStatus(){
+ try{
+  const res=await request('/youtube/status');
+  const titleEl=$('yt-status-title'),subEl=$('yt-status-sub'),btn=$('yt-connect-btn');
+  if(!titleEl||!btn)return;
+  if(res.is_connected){
+   const ch=res.channel||{};
+   const title=ch.title||'Connected YouTube Channel';
+   titleEl.innerHTML=`Connected: <span style="color:#58e8f7">${title}</span>`;
+   subEl.textContent=`Subs: ${ch.subscribers||'0'} · Videos: ${ch.video_count||'0'} · Ready to upload Shorts`;
+   btn.textContent='✅ Connected';
+   btn.classList.add('connected');
+   btn.onclick=null;
+  }else{
+   titleEl.textContent='YouTube Shorts Integration';
+   subEl.textContent='Connect your channel with 1-click to upload Shorts directly from here.';
+   btn.textContent='🔗 Connect YouTube Channel';
+   btn.classList.remove('connected');
+   btn.onclick=async()=>{
+    btn.disabled=true;
+    btn.textContent='Opening Google sign-in...';
+    try{
+     const authRes=await request('/youtube/auth-url');
+     if(authRes.auth_url){
+      window.location.href=authRes.auth_url;
+     }
+    }catch(err){
+     status('YouTube connect failed: '+err.message);
+     btn.disabled=false;
+     btn.textContent='🔗 Connect YouTube Channel';
+    }
+   };
+  }
+ }catch(e){}
+}
+
+function openYtUploadModal(c){
+ currentYtClip=c;
+ $('yt-modal-filename').textContent=c.filename;
+ $('yt-title-input').value=(c.title?`${c.title} #shorts`:`${c.stem} #shorts`).slice(0,100);
+ $('yt-desc-input').value=`${c.title||c.stem}\n\nCreated with NeonClipping.\n#shorts #gaming #gta6 #viral`;
+ $('yt-privacy-select').value='public';
+ $('yt-upload-progress-box').hidden=true;
+ $('yt-upload-success-link').hidden=true;
+ $('yt-submit-upload-btn').disabled=false;
+ $('yt-submit-upload-btn').textContent='🚀 Upload to Shorts Now';
+ $('yt-dialog').showModal();
+}
+
+$('yt-submit-upload-btn').onclick=async()=>{
+ if(!currentYtClip)return;
+ const b=$('yt-submit-upload-btn');
+ b.disabled=true;
+ $('yt-upload-progress-box').hidden=false;
+ $('yt-upload-progress-bar').style.width='5%';
+ $('yt-upload-status-text').textContent='Starting YouTube upload...';
+ $('yt-upload-success-link').hidden=true;
+
+ try{
+  const res=await request('/youtube/upload',{
+   filename:currentYtClip.filename,
+   title:$('yt-title-input').value.trim(),
+   description:$('yt-desc-input').value.trim(),
+   privacy:$('yt-privacy-select').value
+  });
+  if(!res.ok)throw Error('Upload request failed');
+  const taskId=res.task_id;
+  if(ytPollTimer)clearInterval(ytPollTimer);
+  ytPollTimer=setInterval(async()=>{
+   try{
+    const st=await request('/youtube/upload-status/'+taskId);
+    $('yt-upload-progress-bar').style.width=Math.max(5,st.progress||0)+'%';
+    $('yt-upload-status-text').textContent=st.message||st.status;
+    if(st.status==='done'){
+     clearInterval(ytPollTimer);
+     $('yt-upload-progress-bar').style.width='100%';
+     $('yt-upload-status-text').innerHTML='🎉 <span style="color:#58e8f7">Upload Complete!</span>';
+     const linkBox=$('yt-upload-success-link');
+     linkBox.hidden=false;
+     linkBox.innerHTML=`<a href="${st.shorts_url}" target="_blank" rel="noopener">🎬 Open Short on YouTube: ${st.shorts_url} ↗</a>`;
+     b.disabled=false;
+     b.textContent='Upload Again';
+     status('Short uploaded to YouTube: '+st.shorts_url);
+    }else if(st.status==='error'){
+     clearInterval(ytPollTimer);
+     $('yt-upload-status-text').innerHTML=`<span style="color:#ff4ba5">Failed: ${st.error}</span>`;
+     b.disabled=false;
+    }
+   }catch(err){
+    clearInterval(ytPollTimer);
+    b.disabled=false;
+   }
+  },1000);
+ }catch(e){
+  $('yt-upload-status-text').textContent='Error: '+e.message;
+  b.disabled=false;
+ }
+};
+
 async function refreshSaved(){
  const res=await request('/saved');
  if($('saved-count'))$('saved-count').textContent=res.count;
@@ -125,6 +225,7 @@ async function refreshSaved(){
  if($('saved-total-size'))$('saved-total-size').textContent=res.total_size_formatted;
  if($('saved-folder-path-display'))$('saved-folder-path-display').textContent=res.dir;
  const host=$('saved-grid');
+ await checkYouTubeStatus();
  if(!host)return;
  host.replaceChildren();
  if(!res.clips?.length){
@@ -159,6 +260,11 @@ async function refreshSaved(){
     status('Could not delete: '+e.message);delBtn.disabled=false;
    }
   };
+  const ytBtn=document.createElement('button');
+  ytBtn.className='yt-upload-action-btn';
+  ytBtn.innerHTML='🚀 Upload to Shorts';
+  ytBtn.onclick=()=>openYtUploadModal(c);
+  links.append(ytBtn);
   links.append(delBtn);
   card.append(video,title,meta,fileBox,links);
   host.append(card);
@@ -166,6 +272,30 @@ async function refreshSaved(){
 }
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===b.dataset.view));$('editor-view').hidden=b.dataset.view!=='editor';$('library-view').hidden=b.dataset.view!=='library';if($('saved-view'))$('saved-view').hidden=b.dataset.view!=='saved';if($('sources-view'))$('sources-view').hidden=b.dataset.view!=='sources';if(b.dataset.view==='library')refreshLibrary().catch(e=>status(e.message));if(b.dataset.view==='saved')refreshSaved().catch(e=>status(e.message));if(b.dataset.view==='sources')refreshSources().catch(e=>status(e.message));});$('refresh-library').onclick=()=>refreshLibrary().catch(e=>status(e.message));if($('clear-library'))$('clear-library').onclick=async()=>{const n=$('library-count')?.textContent||'all';if(!confirm('Clear all '+n+' clips from the data cache folder?\n\nNOTE: Upload-ready copies in your "Saved" folder will remain safe!'))return;$('clear-library').disabled=true;try{const res=await request('/library/clear',{});status('Cleared '+res.count+' clip(s) from data cache ('+res.freed_mb+' MB freed).');await refreshLibrary();}catch(e){status('Could not clear clips: '+e.message);}finally{$('clear-library').disabled=false;}};if($('refresh-saved'))$('refresh-saved').onclick=()=>refreshSaved().catch(e=>status(e.message));if($('refresh-sources'))$('refresh-sources').onclick=()=>refreshSources().catch(e=>status(e.message));if($('clear-sources'))$('clear-sources').onclick=async()=>{const totalSize=$('sources-total-size')?.textContent||'all';if(!confirm('Delete ALL full source videos from disk ('+totalSize+')?\n\nThis will free up substantial disk space on your PC.'))return;$('clear-sources').disabled=true;try{const res=await request('/sources/clear',{});status('Deleted '+res.count+' source video(s) ('+(res.freed_gb||res.freed_mb+' MB')+' freed).');await refreshSources();}catch(e){status('Could not clear sources: '+e.message);}finally{$('clear-sources').disabled=false;}};
 request('/highlights').then(showHighlights).catch(e=>status(e.message));refreshLibrary().catch(e=>status(e.message));refreshSaved().catch(e=>status(e.message));refreshSources().catch(e=>status(e.message));
+const qParams=new URLSearchParams(window.location.search);
+if(qParams.has('code')){
+ const code=qParams.get('code');
+ const state=qParams.get('state');
+ window.history.replaceState({},document.title,window.location.pathname);
+ // Switch to Saved tab immediately
+ document.querySelector('[data-view=saved]')?.click();
+ const titleEl=$('yt-status-title'),subEl=$('yt-status-sub'),btn=$('yt-connect-btn');
+ if(titleEl)titleEl.textContent='Connecting to YouTube...';
+ if(subEl)subEl.textContent='Verifying credentials with Google. Please wait...';
+ if(btn){btn.disabled=true;btn.textContent='Authenticating...';}
+ status('Authorizing with YouTube...');
+ request('/youtube/exchange-token',{code,state}).then(res=>{
+  if(res.ok){
+   status('🎉 Connected to YouTube: '+(res.channel?.title||'Channel'));
+   refreshSaved().catch(e=>status(e.message));
+  }
+ }).catch(err=>{
+  status('YouTube connection failed: '+err.message);
+  if(subEl)subEl.textContent='Connection failed: '+err.message;
+  if(btn){btn.disabled=false;btn.textContent='🔗 Retry Connect';}
+  alert('YouTube Connection Notice:\n\n' + err.message + '\n\nPlease click "Connect YouTube Channel" to complete sign-in.');
+ });
+}
 
 $('make').onclick=async()=>{const url=$('url').value.trim();if(!url&&!id){status('Paste a video link or upload a file first.');return;}
  const b=$('make');b.disabled=true;$('make-results').hidden=false;$('make-results').querySelector('.star-ask')?.remove();$('make-grid').replaceChildren();$('make-progress').style.width='2%';

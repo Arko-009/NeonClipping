@@ -100,5 +100,53 @@
 <div class="import-note">The music sits low under the voice, then rises to its peak volume in the last seconds. Your logo, music and image stay on this computer.</div>
 <div class="controls"><button class="secondary" id="st-reset">Reset all style options</button></div></section>
 <section class="panel" id="saved-edit" hidden><h2>Edit saved clips</h2><h3 style="margin-top:18px">Speaker position &amp; shape · 11 layouts</h3><div id="edit-layouts" class="layout-grid"></div><label>Speaker size<input id="edit-top" type="range" min="20" max="50" value="32"></label><p class="muted">Reuse the saved video, selected moments and subtitle timings. Only the final MP4 is exported again. Each clip keeps its own transcript.</p><div class="controls" style="margin-top:14px"><button class="primary" id="apply-video">Apply to all clips of this video</button><button class="secondary" id="apply-one">Only this clip</button><button id="download-bundle">Download video’s clips ZIP</button><a id="bundle-link" hidden download>Download ZIP</a></div></section><section class="export-bar"><div><b id="status" role="status">Add a video to begin.</b><p id="detail">Your exports stay on this computer and appear in My clips.</p></div><button id="batch">Export video highlights</button><button class="primary" id="export">Export clip ↗</button><a id="download" class="download" hidden download="neoncut-clip.mp4">↓ Download MP4</a><a id="srt" hidden>↓ Subtitles SRT</a><a id="vtt" hidden>↓ WebVTT</a></section></section>
-<section id="library-view" hidden><section class="library-heading"><h2>Your clips, <em>ready to go.</em></h2><div class="heading-actions"><button id="refresh-library">Refresh library</button><button id="clear-library" class="btn-clear">🗑 Clear All</button></div></section><div class="saved-folder-banner"><div class="sources-banner-info"><span class="badge-saved">📁 READY TO UPLOAD</span><div class="sources-path-row"><span class="path-label">Saved folder:</span> <code>A:\temp\neonclipping\Saved</code></div><p class="muted">Upload-ready copy of every generated clip is automatically stored in this folder on your PC.</p></div></div><p class="muted">Finished exports stay in the studio's data folder. Download an MP4 to keep or share it.</p><div id="library" class="library-grid"></div></section><section id="saved-view" hidden><section class="library-heading"><h2>Saved Clips, <em>ready to upload.</em></h2><button id="refresh-saved">Refresh saved</button></section><div class="sources-banner"><div class="sources-banner-info"><span class="badge-saved">💾 READY TO UPLOAD FOLDER</span><div class="sources-path-row"><span class="path-label">File path:</span> <code id="saved-folder-path-display">A:\temp\neonclipping\Saved</code></div><p class="muted">A copy of every generated clip is automatically stored in this dedicated folder on your PC. You can upload these 9:16 vertical clips directly to Shorts, Reels, and TikTok.</p></div><div class="sources-stats"><div class="stat-card"><b id="saved-total-count">0</b><span>Ready Clips</span></div><div class="stat-card"><b id="saved-total-size">0 MB</b><span>Folder Size</span></div></div></div><div id="saved-grid" class="library-grid"></div></section><section id="sources-view" hidden><section class="library-heading"><h2>Source Videos, <em>stored on this PC.</em></h2><div class="heading-actions"><button id="refresh-sources">Refresh sources</button><button id="clear-sources" class="btn-clear">🗑 Clear All</button></div></section><div class="sources-banner"><div class="sources-banner-info"><span class="badge-disk">💾 LOCAL STORAGE FOLDER</span><div class="sources-path-row"><span class="path-label">File path:</span> <code id="sources-folder-path">A:\temp\neonclipping\data</code></div><p class="muted">Full downloaded videos (YouTube, Twitch, Kick) and uploaded files are saved in this folder on your computer. You can create more clips directly from them anytime without re-downloading, or delete them to free up disk space.</p></div><div class="sources-stats"><div class="stat-card"><b id="sources-total-count">0</b><span>Total Videos</span></div><div class="stat-card"><b id="sources-total-size">0 MB</b><span>Disk Space</span></div></div></div><div id="sources-grid" class="sources-grid"></div></section><footer>NEONCLIPPING STUDIO <span>Review your moment. Keep the creator's campaign brief in view.</span></footer></main><script src="/assets/app.js?v=20261120-stacklive"></script>
+<section id="library-view" hidden><section class="library-heading"><h2>Your clips, <em>ready to go.</em></h2><div class="heading-actions"><button id="refresh-library">Refresh library</button><button id="clear-library" class="btn-clear">🗑 Clear All</button></div></section><div class="saved-folder-banner"><div class="sources-banner-info"><span class="badge-saved">📁 READY TO UPLOAD</span><div class="sources-path-row"><span class="path-label">Saved folder:</span> <code>A:\temp\neonclipping\Saved</code></div><p class="muted">Upload-ready copy of every generated clip is automatically stored in this folder on your PC.</p></div></div><p class="muted">Finished exports stay in the studio's data folder. Download an MP4 to keep or share it.</p><div id="library" class="library-grid"></div></section><section id="saved-view" hidden><section class="library-heading"><h2>Saved Clips, <em>ready to upload.</em></h2><button id="refresh-saved">Refresh saved</button></section><div class="sources-banner"><div class="sources-banner-info"><span class="badge-saved">💾 READY TO UPLOAD FOLDER</span><div class="sources-path-row"><span class="path-label">File path:</span> <code id="saved-folder-path-display">A:\temp\neonclipping\Saved</code></div><p class="muted">A copy of every generated clip is automatically stored in this dedicated folder on your PC. You can upload these 9:16 vertical clips directly to Shorts, Reels, and TikTok.</p></div><div class="sources-stats"><div class="stat-card"><b id="saved-total-count">0</b><span>Ready Clips</span></div><div class="stat-card"><b id="saved-total-size">0 MB</b><span>Folder Size</span></div></div></div>
+<div class="yt-account-card" id="yt-account-card">
+  <div class="yt-account-info">
+    <span class="yt-logo-badge">▶</span>
+    <div class="yt-text-meta">
+      <b id="yt-status-title">YouTube Shorts Integration</b>
+      <span id="yt-status-sub" class="muted">Connect your channel with 1-click to upload Shorts directly from here.</span>
+    </div>
+  </div>
+  <div class="yt-account-actions">
+    <button id="yt-connect-btn" class="primary yt-btn">🔗 Connect YouTube Channel</button>
+  </div>
+</div>
+<div id="saved-grid" class="library-grid"></div></section><section id="sources-view" hidden><section class="library-heading"><h2>Source Videos, <em>stored on this PC.</em></h2><div class="heading-actions"><button id="refresh-sources">Refresh sources</button><button id="clear-sources" class="btn-clear">🗑 Clear All</button></div></section><div class="sources-banner"><div class="sources-banner-info"><span class="badge-disk">💾 LOCAL STORAGE FOLDER</span><div class="sources-path-row"><span class="path-label">File path:</span> <code id="sources-folder-path">A:\temp\neonclipping\data</code></div><p class="muted">Full downloaded videos (YouTube, Twitch, Kick) and uploaded files are saved in this folder on your computer. You can create more clips directly from them anytime without re-downloading, or delete them to free up disk space.</p></div><div class="sources-stats"><div class="stat-card"><b id="sources-total-count">0</b><span>Total Videos</span></div><div class="stat-card"><b id="sources-total-size">0 MB</b><span>Disk Space</span></div></div></div><div id="sources-grid" class="sources-grid"></div></section><dialog id="yt-dialog" class="yt-modal">
+  <div class="yt-modal-head">
+    <h3>🚀 Upload to YouTube Shorts</h3>
+    <button id="yt-close-btn" class="modal-close-btn" onclick="document.getElementById('yt-dialog').close()">&times;</button>
+  </div>
+  <div class="yt-modal-body">
+    <div class="yt-clip-preview-summary">
+      <span class="lbl" style="color:var(--cyan);font-weight:700">Clip:</span> <code id="yt-modal-filename">filename.mp4</code>
+    </div>
+    <label>Shorts Title (max 100 characters)
+      <input id="yt-title-input" type="text" maxlength="100" placeholder="Epic GTA 6 Moment #shorts">
+    </label>
+    <label>Description &amp; Tags
+      <textarea id="yt-desc-input" rows="3" placeholder="Description..."></textarea>
+    </label>
+    <div class="controls" style="margin-top:10px">
+      <label>Privacy
+        <select id="yt-privacy-select">
+          <option value="public" selected>Public (Live immediately)</option>
+          <option value="unlisted">Unlisted (Review with link first)</option>
+          <option value="private">Private (Draft)</option>
+        </select>
+      </label>
+    </div>
+    <div id="yt-upload-progress-box" hidden style="margin-top:14px">
+      <div class="progress-track"><div id="yt-upload-progress-bar"></div></div>
+      <b id="yt-upload-status-text" class="status-msg" style="display:block;margin-top:6px;color:var(--cyan)">Uploading...</b>
+      <div id="yt-upload-success-link" class="yt-success-box" hidden></div>
+    </div>
+  </div>
+  <div class="yt-modal-actions">
+    <button id="yt-cancel-btn" class="secondary" onclick="document.getElementById('yt-dialog').close()">Cancel</button>
+    <button id="yt-submit-upload-btn" class="primary">🚀 Upload to Shorts Now</button>
+  </div>
+</dialog>
+<footer>NEONCLIPPING STUDIO <span>Review your moment. Keep the creator's campaign brief in view.</span></footer></main><script src="/assets/app.js?v=20261121-fix"></script>
 <script src="/assets/extras.js?v=20261120-stacklive"></script><script src="/assets/vision.js?v=20261120-stacklive"></script></body></html>
