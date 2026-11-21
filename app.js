@@ -131,11 +131,18 @@ async function checkYouTubeStatus(){
    btn.textContent='✅ Connected';
    btn.classList.add('connected');
    btn.onclick=null;
+   if($('home-yt-title'))$('home-yt-title').textContent='Connected: '+title+' '+(ch.custom_url||'');
+   if($('home-yt-sub'))$('home-yt-sub').textContent=`${ch.subscribers||'0'} Subs · ${ch.video_count||'0'} Videos · Ready to upload`;
+   if($('top-yt-label'))$('top-yt-label').textContent='YouTube: '+title;
+   if($('top-yt-pill')){$('top-yt-pill').style.color='#85e89d';$('top-yt-pill').style.borderColor='#236136';}
   }else{
    titleEl.textContent='YouTube Shorts Integration';
    subEl.textContent='Connect your channel with 1-click to upload Shorts directly from here.';
    btn.textContent='🔗 Connect YouTube Channel';
    btn.classList.remove('connected');
+   if($('home-yt-title'))$('home-yt-title').textContent='Connect YouTube Channel';
+   if($('home-yt-sub'))$('home-yt-sub').textContent='1-click direct upload to Shorts';
+   if($('top-yt-label'))$('top-yt-label').textContent='Connect YouTube';
    btn.onclick=async()=>{
     btn.disabled=true;
     btn.textContent='Opening Google sign-in...';
@@ -223,6 +230,9 @@ async function refreshSaved(){
  if($('top-saved-count'))$('top-saved-count').textContent=res.count;
  if($('saved-total-count'))$('saved-total-count').textContent=res.count;
  if($('saved-total-size'))$('saved-total-size').textContent=res.total_size_formatted;
+ if($('home-saved-badge'))$('home-saved-badge').textContent=res.count;
+ if($('home-stat-saved-count'))$('home-stat-saved-count').textContent=res.count+' Ready Clips';
+ if($('home-stat-saved-size'))$('home-stat-saved-size').textContent=res.total_size_formatted+' in Saved';
  if($('saved-folder-path-display'))$('saved-folder-path-display').textContent=res.dir;
  const host=$('saved-grid');
  await checkYouTubeStatus();
@@ -270,8 +280,68 @@ async function refreshSaved(){
   host.append(card);
  }
 }
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===b.dataset.view));$('editor-view').hidden=b.dataset.view!=='editor';$('library-view').hidden=b.dataset.view!=='library';if($('saved-view'))$('saved-view').hidden=b.dataset.view!=='saved';if($('sources-view'))$('sources-view').hidden=b.dataset.view!=='sources';if(b.dataset.view==='library')refreshLibrary().catch(e=>status(e.message));if(b.dataset.view==='saved')refreshSaved().catch(e=>status(e.message));if(b.dataset.view==='sources')refreshSources().catch(e=>status(e.message));});$('refresh-library').onclick=()=>refreshLibrary().catch(e=>status(e.message));if($('clear-library'))$('clear-library').onclick=async()=>{const n=$('library-count')?.textContent||'all';if(!confirm('Clear all '+n+' clips from the data cache folder?\n\nNOTE: Upload-ready copies in your "Saved" folder will remain safe!'))return;$('clear-library').disabled=true;try{const res=await request('/library/clear',{});status('Cleared '+res.count+' clip(s) from data cache ('+res.freed_mb+' MB freed).');await refreshLibrary();}catch(e){status('Could not clear clips: '+e.message);}finally{$('clear-library').disabled=false;}};if($('refresh-saved'))$('refresh-saved').onclick=()=>refreshSaved().catch(e=>status(e.message));if($('clear-saved'))$('clear-saved').onclick=async()=>{const n=$('saved-total-count')?.textContent||'all';const totalSize=$('saved-total-size')?.textContent||'';if(!confirm('Delete ALL '+n+' saved clips from the Saved folder ('+totalSize+')?\n\nThis will permanently delete all rendered upload-ready clips in your "Saved" folder.'))return;$('clear-saved').disabled=true;try{const res=await request('/saved/clear',{});status('Deleted '+res.count+' saved file(s) ('+(res.freed_gb>=1?res.freed_gb+' GB':res.freed_mb+' MB')+' freed).');await refreshSaved();}catch(e){status('Could not clear saved clips: '+e.message);}finally{$('clear-saved').disabled=false;}};if($('refresh-sources'))$('refresh-sources').onclick=()=>refreshSources().catch(e=>status(e.message));if($('clear-sources'))$('clear-sources').onclick=async()=>{const totalSize=$('sources-total-size')?.textContent||'all';if(!confirm('Delete ALL full source videos from disk ('+totalSize+')?\n\nThis will free up substantial disk space on your PC.'))return;$('clear-sources').disabled=true;try{const res=await request('/sources/clear',{});status('Deleted '+res.count+' source video(s) ('+(res.freed_gb||res.freed_mb+' MB')+' freed).');await refreshSources();}catch(e){status('Could not clear sources: '+e.message);}finally{$('clear-sources').disabled=false;}};
-request('/highlights').then(showHighlights).catch(e=>status(e.message));refreshLibrary().catch(e=>status(e.message));refreshSaved().catch(e=>status(e.message));refreshSources().catch(e=>status(e.message));
+function switchView(viewName){
+ if(viewName==='editor')viewName='video';
+ if(viewName==='publish')viewName='saved';
+
+ document.querySelectorAll('[data-view]').forEach(x=>{
+  x.classList.toggle('active',x.dataset.view===viewName||(viewName==='video'&&x.dataset.view==='editor'));
+ });
+
+ if($('home-view'))$('home-view').hidden=(viewName!=='home');
+ if($('video-view'))$('video-view').hidden=(viewName!=='video');
+ if($('editor-view'))$('editor-view').hidden=(viewName!=='video');
+ if($('stream-view'))$('stream-view').hidden=(viewName!=='stream');
+ if($('saved-view'))$('saved-view').hidden=(viewName!=='saved');
+ if($('sources-view'))$('sources-view').hidden=(viewName!=='sources');
+ if($('library-view'))$('library-view').hidden=(viewName!=='library');
+
+ if(viewName==='library')refreshLibrary().catch(e=>status(e.message));
+ if(viewName==='saved')refreshSaved().catch(e=>status(e.message));
+ if(viewName==='sources')refreshSources().catch(e=>status(e.message));
+ if(viewName==='home'){refreshSaved().catch(e=>{});refreshSources().catch(e=>{});}
+}
+
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
+document.querySelectorAll('[data-go-view]').forEach(b=>b.onclick=()=>switchView(b.dataset.goView));
+document.addEventListener('click',e=>{
+ const btn=e.target.closest('[data-go-view]');
+ if(btn)switchView(btn.dataset.goView);
+});
+
+if($('sidebar-toggle')){
+ $('sidebar-toggle').onclick=()=>{
+  const sb=document.querySelector('.sidebar');
+  const mn=document.querySelector('main');
+  const isC=sb.classList.toggle('collapsed');
+  mn.classList.toggle('sidebar-collapsed',isC);
+  try{localStorage.setItem('neon_sidebar_collapsed',isC?'1':'0');}catch(e){}
+ };
+ try{
+  if(localStorage.getItem('neon_sidebar_collapsed')==='1'){
+   document.querySelector('.sidebar')?.classList.add('collapsed');
+   document.querySelector('main')?.classList.add('sidebar-collapsed');
+  }
+ }catch(e){}
+}
+
+if($('btn-mode-auto')&&$('btn-mode-manual')){
+ $('btn-mode-auto').onclick=()=>{
+  $('btn-mode-auto').classList.add('active');
+  $('btn-mode-manual').classList.remove('active');
+  $('video-auto-container').hidden=false;
+  $('video-manual-container').hidden=true;
+ };
+ $('btn-mode-manual').onclick=()=>{
+  $('btn-mode-manual').classList.add('active');
+  $('btn-mode-auto').classList.remove('active');
+  $('video-auto-container').hidden=true;
+  $('video-manual-container').hidden=false;
+ };
+}
+
+$('refresh-library').onclick=()=>refreshLibrary().catch(e=>status(e.message));if($('clear-library'))$('clear-library').onclick=async()=>{const n=$('library-count')?.textContent||'all';if(!confirm('Clear all '+n+' clips from the data cache folder?\n\nNOTE: Upload-ready copies in your "Saved" folder will remain safe!'))return;$('clear-library').disabled=true;try{const res=await request('/library/clear',{});status('Cleared '+res.count+' clip(s) from data cache ('+res.freed_mb+' MB freed).');await refreshLibrary();}catch(e){status('Could not clear clips: '+e.message);}finally{$('clear-library').disabled=false;}};if($('refresh-saved'))$('refresh-saved').onclick=()=>refreshSaved().catch(e=>status(e.message));if($('clear-saved'))$('clear-saved').onclick=async()=>{const n=$('saved-total-count')?.textContent||'all';const totalSize=$('saved-total-size')?.textContent||'';if(!confirm('Delete ALL '+n+' saved clips from the Saved folder ('+totalSize+')?\n\nThis will permanently delete all rendered upload-ready clips in your "Saved" folder.'))return;$('clear-saved').disabled=true;try{const res=await request('/saved/clear',{});status('Deleted '+res.count+' saved file(s) ('+(res.freed_gb>=1?res.freed_gb+' GB':res.freed_mb+' MB')+' freed).');await refreshSaved();}catch(e){status('Could not clear saved clips: '+e.message);}finally{$('clear-saved').disabled=false;}};if($('refresh-sources'))$('refresh-sources').onclick=()=>refreshSources().catch(e=>status(e.message));if($('clear-sources'))$('clear-sources').onclick=async()=>{const totalSize=$('sources-total-size')?.textContent||'all';if(!confirm('Delete ALL full source videos from disk ('+totalSize+')?\n\nThis will free up substantial disk space on your PC.'))return;$('clear-sources').disabled=true;try{const res=await request('/sources/clear',{});status('Deleted '+res.count+' source video(s) ('+(res.freed_gb||res.freed_mb+' MB')+' freed).');await refreshSources();}catch(e){status('Could not clear sources: '+e.message);}finally{$('clear-sources').disabled=false;}};
+request('/highlights').then(showHighlights).catch(e=>status(e.message));refreshLibrary().catch(e=>status(e.message));refreshSaved().catch(e=>status(e.message));refreshSources().catch(e=>status(e.message));switchView('home');
 const qParams=new URLSearchParams(window.location.search);
 if(qParams.has('code')){
  const code=qParams.get('code');
