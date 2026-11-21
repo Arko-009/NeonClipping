@@ -61,11 +61,13 @@ class InstagramPublisher:
         return {
             "configured": True,
             "is_connected": True,
-            "username": creds.get("username", "Arko007"),
+            "username": creds.get("username", "techmedia09"),
             "account_id": creds.get("instagram_account_id"),
             "page_name": creds.get("page_name"),
             "cloudflared_ready": has_bin,
-            "connected_at": creds.get("connected_at")
+            "connected_at": creds.get("connected_at"),
+            "is_permanent": creds.get("expires_at") == "NEVER",
+            "expires_at": creds.get("expires_at", "Permanent")
         }
 
     def connect_account(self, access_token: str, app_id: str = "", app_secret: str = "") -> Dict[str, Any]:

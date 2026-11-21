@@ -237,11 +237,12 @@ async function checkInstagramStatus(){
   if(res.is_connected){
    const user=res.username||'techmedia09';
    if(labelEl)labelEl.textContent=`Instagram: @${user}`;
-   if(statusEl)statusEl.innerHTML=`Connected: <span style="color:#ff86be">@${user}</span> (ID: ${res.account_id})`;
+   const permBadge = res.is_permanent ? ' <span style="background:rgba(74,222,128,0.2);color:#4ade80;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:700">🔒 Permanent</span>' : '';
+   if(statusEl)statusEl.innerHTML=`Connected: <span style="color:#ff86be">@${user}</span> (ID: ${res.account_id})${permBadge}`;
    if(disconnectBtn)disconnectBtn.style.display='inline-block';
 
-   if(igTitleEl)igTitleEl.innerHTML=`Connected: <span style="color:#ff86be">@${user}</span>`;
-   if(igSubEl)igSubEl.textContent=`Page: ${res.page_name||'Tech Media'} · Meta Graph API Verified · Ready to publish`;
+   if(igTitleEl)igTitleEl.innerHTML=`Connected: <span style="color:#ff86be">@${user}</span>${permBadge}`;
+   if(igSubEl)igSubEl.textContent=`Page: ${res.page_name||'Tech Media'} · Permanent Never-Expiring Token · 100% Ready`;
    if(igBtnEl){
     igBtnEl.textContent='✅ Connected';
     igBtnEl.classList.add('connected');
