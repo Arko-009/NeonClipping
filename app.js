@@ -663,9 +663,9 @@ document.addEventListener('click',e=>{
  if(btn&&btn.dataset.fmt)setFormatChoice(btn.dataset.fmt);
 });
 
-$('live-start').onclick=async()=>{const url=$('live-url').value.trim();if(!url){$('live-stats').textContent='Paste a Twitch or YouTube Live link first.';$('live-box').hidden=false;return;}
+$('live-start').onclick=async()=>{const url=$('live-url')?.value?.trim()||'';if(!url){$('live-stats').textContent='Paste a Twitch or YouTube Live link first.';$('live-box').hidden=false;return;}
  $('live-start').disabled=true;$('live-box').hidden=false;$('live-grid').replaceChildren();liveShown.clear();$('live-stats').textContent='Starting the recorder…';
- try{const r=await request('/live/start',{url,layout:liveFormat,aspect:$('aspect').value,resolution:Number($('resolution').value),fps:Number($('fps').value),cam:rect.cam,game:rect.game,top:Number($('top').value)/100,caption_style:style,language:$('language').value});liveId=r.live;liveTimer=setInterval(livePoll,2000);livePoll();}
+ try{const r=await request('/live/start',{url,layout:liveFormat||'stack',aspect:$('aspect')?.value||'vertical',resolution:Number($('resolution')?.value||1080),fps:Number($('fps')?.value||0),cam:rect?.cam||{x:.72,y:.40,w:.28,h:.28},game:rect?.game||{x:.25,y:0,w:.50,h:1},top:Number($('top')?.value||32)/100,caption_style:style||'gta',language:$('language')?.value||''});liveId=r.live;liveTimer=setInterval(livePoll,2000);livePoll();}
  catch(e){$('live-stats').textContent='⚠ '+e.message;$('live-start').disabled=false;if(/already running/.test(e.message)){try{const r=await request('/live-active');if(r.live){liveId=r.live;$('live-start').disabled=true;liveTimer=setInterval(livePoll,2000);livePoll();}}catch(_){}}}};
 $('live-now').onclick=async()=>{if(!liveId)return;try{await request('/live/'+liveId+'/clip-now',{});$('live-stats').textContent='Cutting the last 30 s…';}catch(e){$('live-stats').textContent='⚠ '+e.message;}};
 $('live-stop').onclick=async()=>{if(!liveId)return;try{await request('/live/'+liveId+'/stop',{});}catch(e){}livePoll();};
@@ -674,7 +674,7 @@ $('live-stop').onclick=async()=>{if(!liveId)return;try{await request('/live/'+li
 (async()=>{try{const r=await request('/live-active');if(r.live){liveId=r.live;$('live-box').hidden=false;$('live-start').disabled=true;liveTimer=setInterval(livePoll,2000);livePoll();}}catch(e){}})();
 
 // ---- Creators: a list of streamers that NeonClipping watches and clips automatically when they go live.
-const creatorOpts=()=>({layout:makeLayout(),aspect:$('aspect').value,resolution:Number($('resolution').value),fps:Number($('fps').value),cam:rect.cam,game:rect.game,top:Number($('top').value)/100,caption_style:style,language:$('language').value});
+const creatorOpts=()=>({layout:typeof makeLayout==='function'?makeLayout():(liveFormat||'stack'),aspect:$('aspect')?.value||'vertical',resolution:Number($('resolution')?.value||1080),fps:Number($('fps')?.value||0),cam:rect?.cam||{x:.72,y:.40,w:.28,h:.28},game:rect?.game||{x:.25,y:0,w:.50,h:1},top:Number($('top')?.value||32)/100,caption_style:style||'gta',language:$('language')?.value||''});
 let creatorSig='';const creatorFeedOpen=new Set();
 function attachLive(id){if(liveId===id)return;liveId=id;liveShown.clear();$('live-grid').replaceChildren();$('live-box').hidden=false;$('live-start').disabled=true;clearInterval(liveTimer);liveTimer=setInterval(livePoll,2000);livePoll();}
 function agoText(t){if(!t)return 'never';const m=Math.round((Date.now()/1000-t)/60);return m<1?'just now':m<60?m+' min ago':Math.round(m/60)+' h ago';}

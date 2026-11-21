@@ -12,14 +12,28 @@
   // ---- reading / writing the style fields
   function raw() {
     const v = {
-      template: $('st-template').value, tpl_name: $('st-tpl-name').value.trim(), tpl_handle: $('st-tpl-handle').value.trim(),
-      bg_mode: $('st-bg-mode').value === 'none' ? '' : $('st-bg-mode').value, bg_color: $('st-bg-color').value, bg_color2: $('st-bg-color2').value,
-      bg_image: assets.bg_image, bg_dim: Number($('st-bg-dim').value) / 100, padding: Number($('st-padding').value), radius: Number($('st-radius').value),
-      watermark_image: assets.watermark_image, watermark_pos: $('st-wm-pos').value, watermark_size: Number($('st-wm-size').value),
-      watermark_opacity: Number($('st-wm-opacity').value) / 100, credit: $('st-credit').value.trim(), outro_text: $('st-outro').value.trim(),
-      outro_seconds: Number($('st-outro-sec').value), music: assets.music, music_volume: Number($('st-music-vol').value) / 100,
-      music_peak: Number($('st-music-peak').value) / 100, music_riser: Number($('st-music-riser').value),
-      caption_anim: $('caption-anim') ? $('caption-anim').value : 'highlight'
+      template: $('st-template')?.value || 'none',
+      tpl_name: $('st-tpl-name')?.value ? $('st-tpl-name').value.trim() : '',
+      tpl_handle: $('st-tpl-handle')?.value ? $('st-tpl-handle').value.trim() : '',
+      bg_mode: $('st-bg-mode')?.value === 'none' ? '' : ($('st-bg-mode')?.value || ''),
+      bg_color: $('st-bg-color')?.value || '#0b0912',
+      bg_color2: $('st-bg-color2')?.value || '#ff4ba5',
+      bg_image: assets.bg_image || '',
+      bg_dim: $('st-bg-dim') ? Number($('st-bg-dim').value) / 100 : 0.25,
+      padding: $('st-padding') ? Number($('st-padding').value) : 0,
+      radius: $('st-radius') ? Number($('st-radius').value) : 0,
+      watermark_image: assets.watermark_image || '',
+      watermark_pos: $('st-wm-pos')?.value || 'tr',
+      watermark_size: $('st-wm-size') ? Number($('st-wm-size').value) : 16,
+      watermark_opacity: $('st-wm-opacity') ? Number($('st-wm-opacity').value) / 100 : 0.85,
+      credit: $('st-credit')?.value ? $('st-credit').value.trim() : '',
+      outro_text: $('st-outro')?.value ? $('st-outro').value.trim() : '',
+      outro_seconds: $('st-outro-sec') ? Number($('st-outro-sec').value) : 3,
+      music: assets.music || '',
+      music_volume: $('st-music-vol') ? Number($('st-music-vol').value) / 100 : 0.15,
+      music_peak: $('st-music-peak') ? Number($('st-music-peak').value) / 100 : 0.85,
+      music_riser: $('st-music-riser') ? Number($('st-music-riser').value) : 4,
+      caption_anim: $('caption-anim')?.value || 'highlight'
     };
     return v;
   }
@@ -47,19 +61,27 @@
   function setRange(id, outId, value, scale) { if ($(id)) $(id).value = value; if ($(outId)) $(outId).textContent = Math.round(Number($(id).value) * (scale || 1)); }
   function loadStyleFields(s) {
     s = s || {};
-    $('st-template').value = s.template || 'none'; $('st-tpl-name').value = s.tpl_name || ''; $('st-tpl-handle').value = s.tpl_handle || '';
-    $('st-bg-mode').value = s.bg_mode || 'none'; if (s.bg_color) $('st-bg-color').value = s.bg_color; if (s.bg_color2) $('st-bg-color2').value = s.bg_color2;
+    if ($('st-template')) $('st-template').value = s.template || 'none';
+    if ($('st-tpl-name')) $('st-tpl-name').value = s.tpl_name || '';
+    if ($('st-tpl-handle')) $('st-tpl-handle').value = s.tpl_handle || '';
+    if ($('st-bg-mode')) $('st-bg-mode').value = s.bg_mode || 'none';
+    if (s.bg_color && $('st-bg-color')) $('st-bg-color').value = s.bg_color;
+    if (s.bg_color2 && $('st-bg-color2')) $('st-bg-color2').value = s.bg_color2;
     setRange('st-padding', 'st-padding-o', s.padding || 0); setRange('st-radius', 'st-radius-o', s.radius || 0);
     setRange('st-bg-dim', 'st-dim-o', Math.round((s.bg_dim === undefined ? .25 : s.bg_dim) * 100));
     assets.bg_image = s.bg_image || ''; assets.watermark_image = s.watermark_image || ''; assets.music = s.music || '';
-    $('st-bg-name').textContent = assets.bg_image ? 'image set' : ''; $('st-wm-name').textContent = assets.watermark_image ? 'logo set' : 'no logo';
-    $('st-music-name').textContent = assets.music ? 'music set' : 'no music';
-    $('st-wm-pos').value = s.watermark_pos || 'tr'; setRange('st-wm-size', 'st-wm-size-o', s.watermark_size || 16);
+    if ($('st-bg-name')) $('st-bg-name').textContent = assets.bg_image ? 'image set' : '';
+    if ($('st-wm-name')) $('st-wm-name').textContent = assets.watermark_image ? 'logo set' : 'no logo';
+    if ($('st-music-name')) $('st-music-name').textContent = assets.music ? 'music set' : 'no music';
+    if ($('st-wm-pos')) $('st-wm-pos').value = s.watermark_pos || 'tr';
+    setRange('st-wm-size', 'st-wm-size-o', s.watermark_size || 16);
     setRange('st-wm-opacity', 'st-wm-op-o', Math.round((s.watermark_opacity === undefined ? .85 : s.watermark_opacity) * 100));
-    $('st-credit').value = s.credit || ''; $('st-outro').value = s.outro_text || ''; $('st-outro-sec').value = s.outro_seconds || 3;
+    if ($('st-credit')) $('st-credit').value = s.credit || '';
+    if ($('st-outro')) $('st-outro').value = s.outro_text || '';
+    if ($('st-outro-sec')) $('st-outro-sec').value = s.outro_seconds || 3;
     setRange('st-music-vol', 'st-mv-o', Math.round((s.music_volume === undefined ? .15 : s.music_volume) * 100));
     setRange('st-music-peak', 'st-mp-o', Math.round((s.music_peak === undefined ? .85 : s.music_peak) * 100));
-    $('st-music-riser').value = s.music_riser || 4;
+    if ($('st-music-riser')) $('st-music-riser').value = s.music_riser || 4;
     if ($('caption-anim')) $('caption-anim').value = s.caption_anim || 'highlight';
     for(const key of BRAND_KEYS){if($('brand-'+key))$('brand-'+key).value=s[key]||'';}
     if($('hook-duration'))$('hook-duration').value=s.hook_duration||8;
@@ -78,7 +100,7 @@
     } catch (e) { assets[key] = ''; nameEl.textContent = '⚠ ' + e.message; }
   }
   const hook = (id, fn) => { const el = $(id); if (el) el.addEventListener('change', fn); };
-  hook('st-bg-file', e => { const f = e.target.files[0]; if (f) { uploadAsset(f, 'image', $('st-bg-name'), 'bg_image'); if ($('st-bg-mode').value === 'none') $('st-bg-mode').value = 'image'; } });
+  hook('st-bg-file', e => { const f = e.target.files[0]; if (f) { uploadAsset(f, 'image', $('st-bg-name'), 'bg_image'); if ($('st-bg-mode')?.value === 'none') $('st-bg-mode').value = 'image'; } });
   hook('st-wm-file', e => { const f = e.target.files[0]; if (f) uploadAsset(f, 'image', $('st-wm-name'), 'watermark_image'); });
   hook('st-music-file', e => { const f = e.target.files[0]; if (f) uploadAsset(f, 'audio', $('st-music-name'), 'music'); });
   [['st-padding', 'st-padding-o', 1], ['st-radius', 'st-radius-o', 1], ['st-bg-dim', 'st-dim-o', 1], ['st-wm-size', 'st-wm-size-o', 1], ['st-wm-opacity', 'st-wm-op-o', 1], ['st-music-vol', 'st-mv-o', 1], ['st-music-peak', 'st-mp-o', 1]]
