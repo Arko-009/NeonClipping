@@ -190,6 +190,9 @@ details.panel>summary{cursor:pointer;list-style:none;font-size:16px}details.pane
 
 .top-nav-right{display:flex;align-items:center;gap:10px}
 .top-nav-pill{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--lime);background:#141a15;border:1px solid #273f27;padding:5px 11px;border-radius:20px;font-weight:600}
+#top-ig-pill{color:#ffc5e3;background:#1a101f;border:1px solid #4a2046;transition:all .18s}
+#top-ig-pill:hover{border-color:#ff4ba5;background:#26132e;box-shadow:0 0 10px rgba(255,75,165,.25)}
+#top-ig-pill .ig-dot{width:7px;height:7px;border-radius:50%;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);box-shadow:0 0 7px #dc2743;display:inline-block}
 .pill-dot.lime{width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 6px var(--lime)}
 .top-btn{display:inline-flex;align-items:center;font-size:12px;font-weight:600;padding:6px 13px;border-radius:8px;text-decoration:none;cursor:pointer;transition:all .15s;background:#1d1527;border:1px solid #3b284e;color:#eedcf5}
 .top-btn:hover{transform:translateY(-1px);border-color:var(--pink);color:#fff}
