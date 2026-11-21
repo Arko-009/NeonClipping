@@ -1,7 +1,6 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="dark"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NeonClipping Studio</title><link rel="stylesheet" href="/assets/style.css?v=20261121-clean"></head><body>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="dark"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NeonClipping Studio</title><link rel="stylesheet" href="/assets/style.css?v=20261121-modernnav"></head><body>
 <nav class="app-top-nav">
   <div class="top-nav-left">
-    <button class="sidebar-toggle-btn" id="sidebar-toggle" title="Toggle Sidebar">☰</button>
     <a class="top-nav-brand" href="/" data-go-view="home">
       <span class="top-brand-icon">N↗</span>
       <div class="top-brand-info">
@@ -27,14 +26,15 @@
 </nav>
 
 <aside class="sidebar">
+  <button class="sidebar-edge-toggle" id="sidebar-toggle" title="Collapse / Expand Sidebar"><span class="toggle-arrow" id="toggle-arrow-icon">‹</span></button>
   <a class="brand" href="/" data-go-view="home">N↗ <div>NEONCLIPPING<small>STUDIO 2.0</small></div></a>
   <div class="nav-label">WORKSPACE</div>
-  <button class="nav active" data-view="home"><span class="nav-icon">🏠</span> &nbsp;<span class="nav-text">Dashboard</span></button>
-  <button class="nav" data-view="video"><span class="nav-icon">🎬</span> &nbsp;<span class="nav-text">Video Cutout</span></button>
-  <button class="nav" data-view="stream"><span class="nav-icon">🔴</span> &nbsp;<span class="nav-text">Stream Cutout</span></button>
-  <button class="nav" data-view="saved"><span class="nav-icon">🚀</span> &nbsp;<span class="nav-text">Publish Media</span> <span id="saved-count">0</span></button>
-  <button class="nav" data-view="sources"><span class="nav-icon">💾</span> &nbsp;<span class="nav-text">Storage &amp; Sources</span> <span id="sources-count">0</span></button>
-  <button class="nav" data-view="library"><span class="nav-icon">▦</span> &nbsp;<span class="nav-text">My Clips Cache</span> <span id="library-count">0</span></button>
+  <button class="nav active" data-view="home"><span class="nav-icon">🏠</span><span class="nav-text">Dashboard</span></button>
+  <button class="nav" data-view="video"><span class="nav-icon">🎬</span><span class="nav-text">Video Cutout</span></button>
+  <button class="nav" data-view="stream"><span class="nav-icon">🔴</span><span class="nav-text">Stream Cutout</span></button>
+  <button class="nav" data-view="saved"><span class="nav-icon">🚀</span><span class="nav-text">Publish Media</span><span class="nav-badge" id="saved-count">0</span></button>
+  <button class="nav" data-view="sources"><span class="nav-icon">💾</span><span class="nav-text">Storage &amp; Sources</span><span class="nav-badge" id="sources-count">0</span></button>
+  <button class="nav" data-view="library"><span class="nav-icon">▦</span><span class="nav-text">My Clips Cache</span><span class="nav-badge" id="library-count">0</span></button>
 </aside>
 
 <main>
