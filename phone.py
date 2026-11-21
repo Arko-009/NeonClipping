@@ -98,10 +98,12 @@ def attach(app, data, root):
 
     @app.middleware('http')
     async def gate(request: Request, call_next):
+        path = request.url.path
+        if path.startswith('/media-saved/'):
+            return await call_next(request)
         host = request.client.host if request.client else ''
         if is_local(host):
             return await call_next(request)
-        path = request.url.path
         if not lan_enabled():
             return JSONResponse({'detail': 'Phone access is off on this computer.'}, status_code=403)
         if path in ('/m', '/m/login', '/manifest.webmanifest', '/phone-icon.svg'):
