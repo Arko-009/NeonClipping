@@ -192,6 +192,15 @@ class LiveSession:
                 time.sleep(2)
             if self.stop_ev.is_set() or not self.rec.exists():
                 return
+            # If user explicitly chose 'game' (Gameplay Only):
+            if self.opts.get('layout') == 'game':
+                with self.lock:
+                    self.opts['layout'] = 'game'
+                    self.opts['game'] = {'x': 0.25, 'y': 0.0, 'w': 0.50, 'h': 1.0}
+                    self.state['facecam'] = {'found': False, 'mode': 'gameplay_only'}
+                    self.state['stage'] = 'Recording (Gameplay Only format active)'
+                return
+
             import facecam_detect
             res = facecam_detect.detect(self.rec)
             if res.get('found') and res.get('cam'):
@@ -200,17 +209,16 @@ class LiveSession:
                 with self.lock:
                     self.opts['cam'] = cam
                     self.opts['game'] = game
-                    if self.opts.get('layout') in ('blur', 'stack', None):
-                        self.opts['layout'] = 'stack'
+                    self.opts['layout'] = 'stack'
                     self.state['facecam'] = {'found': True, 'cam': cam, 'game': game, 'confidence': res.get('confidence')}
                     self.state['stage'] = 'Recording (Facecam detected · Stack layout active)'
             else:
                 with self.lock:
                     self.state['facecam'] = {'found': False, 'reason': res.get('reason')}
-                    if self.opts.get('layout') == 'stack' and not self.opts.get('manual_cam'):
-                        # If no facecam exists in this stream, use exact center gameplay crop
-                        self.opts['layout'] = 'game'
-                        self.opts['game'] = {'x': 0.25, 'y': 0.0, 'w': 0.50, 'h': 1.0}
+                    self.opts['layout'] = 'stack'
+                    if not self.opts.get('cam'):
+                        self.opts['cam'] = {'x': 0.72, 'y': 0.40, 'w': 0.28, 'h': 0.28}
+                    self.state['stage'] = 'Recording (Facecam + Gameplay active)'
         except Exception as e:
             with self.lock:
                 self.state['facecam'] = {'found': False, 'error': str(e)}

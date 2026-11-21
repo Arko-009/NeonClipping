@@ -497,7 +497,7 @@ def live_render(sess,start,dur,why,chat_feature):
  elif hm=='custom' and o.get('hook_text'):hook=str(o['hook_text'])[:70]
  feats={'chat':chat_feature,'words':excite.window_score(words,real),'llm':llm,'loud':loud}
  W=learn.load_weights(DATA);viral=min(99,round(100*learn.score(feats,W)))
- body={'id':name,'start':0,'end':real,'layout':o.get('layout','blur'),'captions':want_caps,'caption_style':o.get('caption_style','gta'),'language':None,'hook':hook,
+ body={'id':name,'start':0,'end':real,'layout':o.get('layout','stack'),'captions':want_caps,'caption_style':o.get('caption_style','gta'),'language':None,'hook':hook,
        'aspect':o.get('aspect','vertical'),'resolution':o.get('resolution',1080),'fps':o.get('fps',0),'title':title,'post_caption':title,'cam':o['cam'],'game':o['game'],'top':o.get('top',.32),'words':words,'features':feats,'weights_used':W,'creator':o.get('creator')}
  for k in styling.KEYS+brands.KEYS+hooks.KEYS:
   if o.get(k) not in (None,''):body[k]=o[k]
