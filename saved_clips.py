@@ -90,3 +90,26 @@ def attach(app, SAVED: Path, probe):
                 pass
         return {'ok': True, 'deleted': filename}
 
+    @app.post('/saved/clear')
+    @app.delete('/saved')
+    def clear_saved():
+        bytes_freed = 0
+        deleted_count = 0
+        for p in list(SAVED.glob('*.mp4')) + list(SAVED.glob('*.srt')):
+            try:
+                if p.is_file():
+                    bytes_freed += p.stat().st_size
+                    p.unlink(missing_ok=True)
+                    deleted_count += 1
+            except OSError:
+                pass
+        freed_mb = round(bytes_freed / (1024 * 1024), 1)
+        freed_gb = round(bytes_freed / (1024 * 1024 * 1024), 2)
+        return {
+            'ok': True,
+            'count': deleted_count,
+            'bytes_freed': bytes_freed,
+            'freed_mb': freed_mb,
+            'freed_gb': freed_gb
+        }
+
