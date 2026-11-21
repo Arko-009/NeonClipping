@@ -407,18 +407,36 @@ async function refreshSaved(){
   return;
  }
  for(const c of res.clips){
-  const card=document.createElement('article');card.className='clip-card';
+  const card=document.createElement('article');card.className='clip-card saved-clip-card';
   const video=document.createElement('video');video.src='/media-saved/'+encodeURIComponent(c.filename);video.controls=true;lazyVideo(video);
-  const title=document.createElement('h3');title.textContent=c.title;
+  const title=document.createElement('h3');title.textContent=c.title;title.title=c.title;
   const meta=document.createElement('p');meta.textContent=c.size_formatted+' · '+new Date(c.created*1000).toLocaleDateString();
   const fileBox=document.createElement('div');fileBox.className='source-filepath';fileBox.style.marginBottom='8px';
-  fileBox.innerHTML=`<span class="lbl">File:</span> <code>${c.filename}</code>`;
-  const links=document.createElement('div');links.className='card-links';
-  const download=document.createElement('a');download.href='/media-saved/'+encodeURIComponent(c.filename);download.download=c.filename;download.textContent='↓ MP4';links.append(download);
+  fileBox.innerHTML=`<span class="lbl">File:</span> <code title="${c.filename}">${c.filename}</code>`;
+
+  // 1. Primary Publishing Action Row (50/50 clean grid)
+  const publishRow=document.createElement('div');publishRow.className='card-publish-row';
+  const ytBtn=document.createElement('button');
+  ytBtn.className='yt-upload-action-btn';
+  ytBtn.innerHTML='🚀 Shorts';
+  ytBtn.title='Upload to YouTube Shorts';
+  ytBtn.onclick=()=>openYtUploadModal(c);
+
+  const igBtn=document.createElement('button');
+  igBtn.className='ig-upload-action-btn';
+  igBtn.innerHTML='🟣 Reel';
+  igBtn.title='Publish to Instagram Reels';
+  igBtn.onclick=()=>openIgUploadModal(c);
+  publishRow.append(ytBtn, igBtn);
+
+  // 2. Secondary Utility Row (Download MP4 / SRT on left, Delete on right)
+  const toolsRow=document.createElement('div');toolsRow.className='card-tools-row';
+  const toolsLeft=document.createElement('div');toolsLeft.className='card-tools-left';
+  const download=document.createElement('a');download.href='/media-saved/'+encodeURIComponent(c.filename);download.download=c.filename;download.textContent='↓ MP4';toolsLeft.append(download);
   if(c.has_srt){
-   const sub=document.createElement('a');sub.href='/media-saved/'+encodeURIComponent(c.srt_filename);sub.download=c.srt_filename;sub.textContent='↓ SRT';links.append(sub);
+   const sub=document.createElement('a');sub.href='/media-saved/'+encodeURIComponent(c.srt_filename);sub.download=c.srt_filename;sub.textContent='↓ SRT';toolsLeft.append(sub);
   }
-  const delBtn=document.createElement('button');delBtn.className='source-btn del-btn';delBtn.textContent='🗑 Delete';
+  const delBtn=document.createElement('button');delBtn.className='source-btn del-btn card-del-btn';delBtn.textContent='🗑 Delete';
   delBtn.onclick=async()=>{
    if(!confirm(`Delete this clip from the Saved folder?\n\nFile: ${c.filename}\nSize: ${c.size_formatted}`))return;
    delBtn.disabled=true;
@@ -431,20 +449,9 @@ async function refreshSaved(){
     status('Could not delete: '+e.message);delBtn.disabled=false;
    }
   };
-  const ytBtn=document.createElement('button');
-  ytBtn.className='yt-upload-action-btn';
-  ytBtn.innerHTML='🚀 YouTube Shorts';
-  ytBtn.onclick=()=>openYtUploadModal(c);
-  links.append(ytBtn);
+  toolsRow.append(toolsLeft, delBtn);
 
-  const igBtn=document.createElement('button');
-  igBtn.className='ig-upload-action-btn';
-  igBtn.innerHTML='🟣 Instagram Reel';
-  igBtn.onclick=()=>openIgUploadModal(c);
-  links.append(igBtn);
-
-  links.append(delBtn);
-  card.append(video,title,meta,fileBox,links);
+  card.append(video,title,meta,fileBox,publishRow,toolsRow);
   host.append(card);
  }
 }

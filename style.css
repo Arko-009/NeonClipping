@@ -239,6 +239,26 @@ details.panel>summary{cursor:pointer;list-style:none;font-size:16px}details.pane
 .ig-upload-action-btn{background:linear-gradient(90deg,#833ab4,#fd1d1d,#fcb045)!important;border:none!important;color:#fff!important;font-weight:700!important;padding:8px 14px!important;border-radius:7px!important;cursor:pointer;transition:all .15s}
 .ig-upload-action-btn:hover{transform:translateY(-1px);box-shadow:0 0 14px rgba(225,48,108,.65)}
 
+/* ---- High-End Clip Card & Saved Grid Layout ---- */
+#saved-grid{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))!important;gap:20px!important;margin-top:25px!important}
+.saved-clip-card{background:#140f1d!important;border:1px solid #2d213b!important;border-radius:14px!important;padding:12px!important;display:flex!important;flex-direction:column!important;box-sizing:border-box!important;transition:all .2s cubic-bezier(0.4,0,0.2,1);box-shadow:0 4px 20px rgba(0,0,0,.4);position:relative;overflow:hidden}
+.saved-clip-card:hover{border-color:#613659!important;transform:translateY(-3px);box-shadow:0 8px 30px rgba(0,0,0,.6),0 0 15px rgba(255,75,165,.15)}
+.saved-clip-card video{width:100%!important;aspect-ratio:9/16!important;max-height:380px!important;background:#060408!important;border-radius:10px!important;object-fit:cover!important;border:1px solid #231930!important}
+.saved-clip-card h3{font-size:14px!important;font-weight:700!important;margin:12px 2px 4px!important;color:#fbf6ff!important;line-height:1.35!important;height:2.7em!important;display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important}
+.saved-clip-card p{font-size:11px!important;color:var(--muted)!important;margin:0 2px 8px!important}
+.saved-clip-card .source-filepath{margin-bottom:12px!important;padding:6px 9px!important;background:#090610!important;border:1px solid #231830!important;border-radius:6px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;font-size:11px!important}
+.saved-clip-card .source-filepath code{color:#c9b4e0!important}
+
+/* Card Action Rows */
+.card-publish-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;margin-top:auto!important;margin-bottom:8px!important}
+.card-publish-row .yt-upload-action-btn,.card-publish-row .ig-upload-action-btn{width:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;padding:9px 8px!important;font-size:12px!important;font-weight:700!important;border-radius:8px!important;white-space:nowrap!important;box-sizing:border-box!important;line-height:1!important}
+.card-tools-row{display:flex!important;align-items:center!important;justify-content:space-between!important;padding-top:8px!important;border-top:1px solid #241930!important;margin-top:2px!important}
+.card-tools-left{display:flex!important;align-items:center!important;gap:8px!important}
+.card-tools-left a{font-size:11px!important;color:var(--cyan)!important;font-weight:600!important;text-decoration:none!important;padding:3px 7px!important;border-radius:4px!important;background:#111a22!important;border:1px solid #1c3644!important;transition:all .15s!important}
+.card-tools-left a:hover{color:#fff!important;border-color:var(--cyan)!important;background:#172a38!important}
+.card-del-btn{font-size:11px!important;padding:4px 9px!important;border-radius:6px!important;background:#250f16!important;color:#ff6b8b!important;border:1px solid #4a1925!important;margin:0!important;transition:all .15s!important;cursor:pointer!important}
+.card-del-btn:hover{background:#3d1421!important;color:#fff!important;border-color:#ff3366!important;transform:translateY(-1px)!important}
+
 .yt-modal{background:#161021;border:1px solid #482f5b;border-radius:16px;color:#fbf6ff;padding:24px;width:90%;max-width:540px;box-shadow:0 10px 50px rgba(0,0,0,.8)}
 .yt-modal::backdrop{background:rgba(0,0,0,.75);backdrop-filter:blur(6px)}
 .yt-modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;border-bottom:1px solid #2d203b;padding-bottom:12px}
