@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="dark"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NeonClipping Studio</title><link rel="stylesheet" href="/assets/style.css?v=20261121-igpub"></head><body>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="dark"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NeonClipping Studio</title><link rel="stylesheet" href="/assets/style.css?v=20261121-dualpub"></head><body>
 <nav class="app-top-nav">
   <div class="top-nav-left">
     <a class="top-nav-brand" href="/" data-go-view="home">
@@ -330,16 +330,31 @@
       </div>
     </div>
 
-    <div class="yt-account-card" id="yt-account-card">
-      <div class="yt-account-info">
-        <span class="yt-logo-badge">▶</span>
-        <div class="yt-text-meta">
-          <b id="yt-status-title">YouTube Shorts Integration</b>
-          <span id="yt-status-sub" class="muted">Connect your channel to upload Shorts directly with 1-click.</span>
+    <div class="publish-integrations-row">
+      <div class="yt-account-card" id="yt-account-card">
+        <div class="yt-account-info">
+          <span class="yt-logo-badge">▶</span>
+          <div class="yt-text-meta">
+            <b id="yt-status-title">YouTube Shorts Integration</b>
+            <span id="yt-status-sub" class="muted">Connect your channel to upload Shorts directly with 1-click.</span>
+          </div>
+        </div>
+        <div class="yt-account-actions">
+          <button id="yt-connect-btn" class="primary yt-btn">🔗 Connect YouTube Channel</button>
         </div>
       </div>
-      <div class="yt-account-actions">
-        <button id="yt-connect-btn" class="primary yt-btn">🔗 Connect YouTube Channel</button>
+
+      <div class="ig-account-card" id="ig-account-card">
+        <div class="ig-account-info">
+          <span class="ig-logo-badge">🟣</span>
+          <div class="ig-text-meta">
+            <b id="ig-status-title">Instagram Reels Integration</b>
+            <span id="ig-status-sub" class="muted">Connect your Instagram Creator account to publish Reels directly.</span>
+          </div>
+        </div>
+        <div class="ig-account-actions">
+          <button id="ig-connect-btn" class="primary ig-btn" onclick="openIgConnectModal()">🔗 Connect Instagram</button>
+        </div>
       </div>
     </div>
 
@@ -528,7 +543,7 @@
   <footer>NEONCLIPPING STUDIO 2.0 <span>Autonomous Video Intelligence &amp; Multi-Platform Distribution</span></footer>
 </main>
 
-<script src="/assets/app.js?v=20261121-igpub"></script>
+<script src="/assets/app.js?v=20261121-dualpub"></script>
 <script src="/assets/extras.js?v=20261120-stacklive"></script>
 <script src="/assets/vision.js?v=20261120-stacklive"></script>
 </body></html>

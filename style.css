@@ -213,16 +213,27 @@ details.panel>summary{cursor:pointer;list-style:none;font-size:16px}details.pane
   main{margin-left:0;margin-top:0;padding:18px 14px}
 }
 
-/* ---- YouTube Shorts Integration ---- */
-.yt-account-card{background:linear-gradient(135deg,#1f1118,#140d1a);border:1px solid #5a2034;border-radius:14px;padding:16px 22px;display:flex;justify-content:space-between;align-items:center;gap:15px;margin:0 0 20px;flex-wrap:wrap}
+/* ---- YouTube & Instagram Social Publishing Integrations ---- */
+.publish-integrations-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:20px}
+.yt-account-card{background:linear-gradient(135deg,#1f1118,#140d1a);border:1px solid #5a2034;border-radius:14px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:15px;margin:0;flex-wrap:wrap}
 .yt-account-info{display:flex;align-items:center;gap:14px}
-.yt-logo-badge{display:flex;align-items:center;justify-content:center;width:38px;height:38px;background:#ff0033;color:#fff;border-radius:10px;font-size:18px;font-weight:900;box-shadow:0 0 15px rgba(255,0,51,.5)}
+.yt-logo-badge{display:flex;align-items:center;justify-content:center;width:38px;height:38px;background:#ff0033;color:#fff;border-radius:10px;font-size:18px;font-weight:900;box-shadow:0 0 15px rgba(255,0,51,.5);flex-shrink:0}
 .yt-text-meta{display:flex;flex-direction:column;gap:3px}
 .yt-text-meta b{font-size:14px;color:#fff}
 .yt-text-meta span{font-size:11px}
 .yt-btn{background:#ff0033!important;border-color:#ff0033!important;color:#fff!important;font-weight:700}
 .yt-btn:hover{background:#ff2e58!important;border-color:#ff2e58!important;box-shadow:0 0 15px rgba(255,0,51,.5)}
 .yt-btn.connected{background:#1e3524!important;border-color:#346d43!important;color:#85e89d!important;cursor:default}
+
+.ig-account-card{background:linear-gradient(135deg,#210f1e,#140b1a);border:1px solid #5a1e4a;border-radius:14px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:15px;margin:0;flex-wrap:wrap}
+.ig-account-info{display:flex;align-items:center;gap:14px}
+.ig-logo-badge{display:flex;align-items:center;justify-content:center;width:38px;height:38px;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);color:#fff;border-radius:10px;font-size:18px;font-weight:900;box-shadow:0 0 15px rgba(220,39,67,.5);flex-shrink:0}
+.ig-text-meta{display:flex;flex-direction:column;gap:3px}
+.ig-text-meta b{font-size:14px;color:#fff}
+.ig-text-meta span{font-size:11px}
+.ig-btn{background:linear-gradient(45deg,#f09433,#dc2743,#bc1888)!important;border:1px solid #dc2743!important;color:#fff!important;font-weight:700;padding:7px 15px!important;border-radius:8px!important;cursor:pointer;transition:all .15s}
+.ig-btn:hover{box-shadow:0 0 15px rgba(220,39,67,.5);transform:translateY(-1px)}
+.ig-btn.connected{background:#1e3524!important;border-color:#346d43!important;color:#85e89d!important;cursor:pointer}
 .yt-upload-action-btn{background:linear-gradient(90deg,#ff0033,#ff4ba5)!important;border-color:#ff0033!important;color:#fff!important;font-weight:700!important;padding:8px 14px!important;border-radius:7px!important;cursor:pointer}
 .yt-upload-action-btn:hover{transform:translateY(-1px);box-shadow:0 0 12px rgba(255,0,51,.6)}
 .ig-upload-action-btn{background:linear-gradient(90deg,#833ab4,#fd1d1d,#fcb045)!important;border:none!important;color:#fff!important;font-weight:700!important;padding:8px 14px!important;border-radius:7px!important;cursor:pointer;transition:all .15s}

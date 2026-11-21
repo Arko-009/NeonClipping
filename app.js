@@ -232,15 +232,33 @@ async function checkInstagramStatus(){
   const labelEl=$('top-ig-label');
   const statusEl=$('ig-connect-status-text');
   const disconnectBtn=$('ig-disconnect-btn');
+  const igTitleEl=$('ig-status-title'), igSubEl=$('ig-status-sub'), igBtnEl=$('ig-connect-btn');
+
   if(res.is_connected){
-   const user=res.username||'Arko007';
+   const user=res.username||'techmedia09';
    if(labelEl)labelEl.textContent=`Instagram: @${user}`;
    if(statusEl)statusEl.innerHTML=`Connected: <span style="color:#ff86be">@${user}</span> (ID: ${res.account_id})`;
    if(disconnectBtn)disconnectBtn.style.display='inline-block';
+
+   if(igTitleEl)igTitleEl.innerHTML=`Connected: <span style="color:#ff86be">@${user}</span>`;
+   if(igSubEl)igSubEl.textContent=`Page: ${res.page_name||'Tech Media'} · Meta Graph API Verified · Ready to publish`;
+   if(igBtnEl){
+    igBtnEl.textContent='✅ Connected';
+    igBtnEl.classList.add('connected');
+    igBtnEl.onclick=()=>openIgConnectModal();
+   }
   }else{
    if(labelEl)labelEl.textContent='Instagram: Connect';
    if(statusEl)statusEl.innerHTML=`<span style="color:var(--muted)">Not connected. Paste your Meta User Access Token below.</span>`;
    if(disconnectBtn)disconnectBtn.style.display='none';
+
+   if(igTitleEl)igTitleEl.textContent='Instagram Reels Integration';
+   if(igSubEl)igSubEl.textContent='Connect your Instagram Creator account to publish Reels directly with 1-click.';
+   if(igBtnEl){
+    igBtnEl.textContent='🔗 Connect Instagram';
+    igBtnEl.classList.remove('connected');
+    igBtnEl.onclick=()=>openIgConnectModal();
+   }
   }
  }catch(e){}
 }
