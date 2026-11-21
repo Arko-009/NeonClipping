@@ -224,6 +224,148 @@ $('yt-submit-upload-btn').onclick=async()=>{
  }
 };
 
+let currentIgClip=null,igPollTimer=null;
+
+async function checkInstagramStatus(){
+ try{
+  const res=await request('/instagram/status');
+  const labelEl=$('top-ig-label');
+  const statusEl=$('ig-connect-status-text');
+  const disconnectBtn=$('ig-disconnect-btn');
+  if(res.is_connected){
+   const user=res.username||'Arko007';
+   if(labelEl)labelEl.textContent=`Instagram: @${user}`;
+   if(statusEl)statusEl.innerHTML=`Connected: <span style="color:#ff86be">@${user}</span> (ID: ${res.account_id})`;
+   if(disconnectBtn)disconnectBtn.style.display='inline-block';
+  }else{
+   if(labelEl)labelEl.textContent='Instagram: Connect';
+   if(statusEl)statusEl.innerHTML=`<span style="color:var(--muted)">Not connected. Paste your Meta User Access Token below.</span>`;
+   if(disconnectBtn)disconnectBtn.style.display='none';
+  }
+ }catch(e){}
+}
+
+function openIgConnectModal(){
+ $('ig-connect-result-msg').hidden=true;
+ checkInstagramStatus();
+ $('ig-connect-dialog').showModal();
+}
+
+if($('top-ig-pill'))$('top-ig-pill').onclick=()=>openIgConnectModal();
+
+if($('ig-connect-submit-btn')){
+ $('ig-connect-submit-btn').onclick=async()=>{
+  const token=$('ig-token-input').value.trim();
+  const appId=$('ig-appid-input')?$('ig-appid-input').value.trim():'';
+  const secret=$('ig-secret-input')?$('ig-secret-input').value.trim():'';
+  const msgEl=$('ig-connect-result-msg');
+  const btn=$('ig-connect-submit-btn');
+  if(!token){
+   alert('Please paste your Meta User Access Token.');
+   return;
+  }
+  btn.disabled=true;
+  btn.textContent='Connecting...';
+  msgEl.hidden=false;
+  msgEl.style.color='var(--cyan)';
+  msgEl.textContent='Verifying with Meta Graph API...';
+  try{
+   const r=await request('/instagram/connect',{
+    access_token:token,
+    app_id:appId,
+    app_secret:secret
+   });
+   msgEl.style.color='#85e89d';
+   msgEl.textContent=`🎉 Connected to @${r.username}! Account ID: ${r.account_id}`;
+   btn.disabled=false;
+   btn.textContent='🔗 Update Token';
+   $('ig-token-input').value='';
+   await checkInstagramStatus();
+   setTimeout(()=>$('ig-connect-dialog').close(),1500);
+  }catch(e){
+   msgEl.style.color='#ff4ba5';
+   msgEl.textContent='Error: '+e.message;
+   btn.disabled=false;
+   btn.textContent='🔗 Connect Account';
+  }
+ };
+}
+
+if($('ig-disconnect-btn')){
+ $('ig-disconnect-btn').onclick=async()=>{
+  if(!confirm('Disconnect Instagram account?'))return;
+  try{
+   await request('/instagram/disconnect',{});
+   await checkInstagramStatus();
+   $('ig-connect-result-msg').hidden=false;
+   $('ig-connect-result-msg').style.color='var(--muted)';
+   $('ig-connect-result-msg').textContent='Instagram disconnected.';
+  }catch(e){alert(e.message);}
+ };
+}
+
+function openIgUploadModal(c){
+ currentIgClip=c;
+ $('ig-modal-filename').textContent=c.filename;
+ $('ig-caption-input').value=`${c.title||c.stem}\n\n🔥 Created with NeonClipping Studio\n#reels #gaming #gta6 #viral #trending`;
+ $('ig-share-feed-checkbox').checked=true;
+ $('ig-upload-progress-box').hidden=true;
+ $('ig-upload-success-link').hidden=true;
+ $('ig-submit-upload-btn').disabled=false;
+ $('ig-submit-upload-btn').textContent='🟣 Publish Reel Now';
+ $('ig-upload-dialog').showModal();
+}
+
+if($('ig-submit-upload-btn')){
+ $('ig-submit-upload-btn').onclick=async()=>{
+  if(!currentIgClip)return;
+  const b=$('ig-submit-upload-btn');
+  b.disabled=true;
+  $('ig-upload-progress-box').hidden=false;
+  $('ig-upload-progress-bar').style.width='10%';
+  $('ig-upload-status-text').textContent='Starting secure Cloudflare tunnel...';
+  $('ig-upload-success-link').hidden=true;
+
+  try{
+   const res=await request('/instagram/publish',{
+    filename:currentIgClip.filename,
+    caption:$('ig-caption-input').value.trim(),
+    share_to_feed:$('ig-share-feed-checkbox').checked
+   });
+   const taskId=res.task_id;
+   if(igPollTimer)clearInterval(igPollTimer);
+   igPollTimer=setInterval(async()=>{
+    try{
+     const st=await request('/instagram/task/'+taskId);
+     $('ig-upload-progress-bar').style.width=Math.max(10,st.progress||0)+'%';
+     $('ig-upload-status-text').textContent=st.message||st.status;
+     if(st.status==='done'){
+      clearInterval(igPollTimer);
+      $('ig-upload-progress-bar').style.width='100%';
+      $('ig-upload-status-text').innerHTML='🎉 <span style="color:#ff86be">Reel Published to Instagram!</span>';
+      const linkBox=$('ig-upload-success-link');
+      linkBox.hidden=false;
+      linkBox.innerHTML=`<a href="${st.permalink}" target="_blank" rel="noopener">🟣 Open Reel on Instagram: ${st.permalink} ↗</a>`;
+      b.disabled=false;
+      b.textContent='Publish Again';
+      status('Reel published to Instagram: '+st.permalink);
+     }else if(st.status==='error'){
+      clearInterval(igPollTimer);
+      $('ig-upload-status-text').innerHTML=`<span style="color:#ff4ba5">Failed: ${st.error}</span>`;
+      b.disabled=false;
+     }
+    }catch(err){
+     clearInterval(igPollTimer);
+     b.disabled=false;
+    }
+   },2000);
+  }catch(e){
+   $('ig-upload-status-text').textContent='Error: '+e.message;
+   b.disabled=false;
+  }
+ };
+}
+
 async function refreshSaved(){
  const res=await request('/saved');
  if($('saved-count'))$('saved-count').textContent=res.count;
@@ -236,6 +378,7 @@ async function refreshSaved(){
  if($('saved-folder-path-display'))$('saved-folder-path-display').textContent=res.dir;
  const host=$('saved-grid');
  await checkYouTubeStatus();
+ await checkInstagramStatus();
  if(!host)return;
  host.replaceChildren();
  if(!res.clips?.length){
@@ -272,9 +415,16 @@ async function refreshSaved(){
   };
   const ytBtn=document.createElement('button');
   ytBtn.className='yt-upload-action-btn';
-  ytBtn.innerHTML='🚀 Upload to Shorts';
+  ytBtn.innerHTML='🚀 YouTube Shorts';
   ytBtn.onclick=()=>openYtUploadModal(c);
   links.append(ytBtn);
+
+  const igBtn=document.createElement('button');
+  igBtn.className='ig-upload-action-btn';
+  igBtn.innerHTML='🟣 Instagram Reel';
+  igBtn.onclick=()=>openIgUploadModal(c);
+  links.append(igBtn);
+
   links.append(delBtn);
   card.append(video,title,meta,fileBox,links);
   host.append(card);

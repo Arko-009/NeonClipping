@@ -225,6 +225,8 @@ details.panel>summary{cursor:pointer;list-style:none;font-size:16px}details.pane
 .yt-btn.connected{background:#1e3524!important;border-color:#346d43!important;color:#85e89d!important;cursor:default}
 .yt-upload-action-btn{background:linear-gradient(90deg,#ff0033,#ff4ba5)!important;border-color:#ff0033!important;color:#fff!important;font-weight:700!important;padding:8px 14px!important;border-radius:7px!important;cursor:pointer}
 .yt-upload-action-btn:hover{transform:translateY(-1px);box-shadow:0 0 12px rgba(255,0,51,.6)}
+.ig-upload-action-btn{background:linear-gradient(90deg,#833ab4,#fd1d1d,#fcb045)!important;border:none!important;color:#fff!important;font-weight:700!important;padding:8px 14px!important;border-radius:7px!important;cursor:pointer;transition:all .15s}
+.ig-upload-action-btn:hover{transform:translateY(-1px);box-shadow:0 0 14px rgba(225,48,108,.65)}
 
 .yt-modal{background:#161021;border:1px solid #482f5b;border-radius:16px;color:#fbf6ff;padding:24px;width:90%;max-width:540px;box-shadow:0 10px 50px rgba(0,0,0,.8)}
 .yt-modal::backdrop{background:rgba(0,0,0,.75);backdrop-filter:blur(6px)}
