@@ -58,7 +58,7 @@
     for (const k of STYLE_KEYS) s[k] = on[k] === undefined ? (k === 'template' ? 'none' : k === 'caption_anim' ? 'highlight' : '') : on[k];
     return s;
   }
-  function setRange(id, outId, value, scale) { if ($(id)) $(id).value = value; if ($(outId)) $(outId).textContent = Math.round(Number($(id).value) * (scale || 1)); }
+  function setRange(id, outId, value, scale) { const el = $(id); if (el) el.value = value; const out = $(outId); if (out && el) out.textContent = Math.round(Number(el.value) * (scale || 1)); }
   function loadStyleFields(s) {
     s = s || {};
     if ($('st-template')) $('st-template').value = s.template || 'none';
@@ -104,7 +104,7 @@
   hook('st-wm-file', e => { const f = e.target.files[0]; if (f) uploadAsset(f, 'image', $('st-wm-name'), 'watermark_image'); });
   hook('st-music-file', e => { const f = e.target.files[0]; if (f) uploadAsset(f, 'audio', $('st-music-name'), 'music'); });
   [['st-padding', 'st-padding-o', 1], ['st-radius', 'st-radius-o', 1], ['st-bg-dim', 'st-dim-o', 1], ['st-wm-size', 'st-wm-size-o', 1], ['st-wm-opacity', 'st-wm-op-o', 1], ['st-music-vol', 'st-mv-o', 1], ['st-music-peak', 'st-mp-o', 1]]
-    .forEach(([i, o]) => { const el = $(i); if (el) el.addEventListener('input', () => { $(o).textContent = el.value; }); });
+    .forEach(([i, o]) => { const el = $(i); if (el) el.addEventListener('input', () => { const out = $(o); if (out) out.textContent = el.value; }); });
   if ($('st-reset')) $('st-reset').onclick = () => loadStyleFields({});
 
   // ---- caption animation + SRT/ASS import (added to the "Give it a voice" panel next to the language picker)
@@ -191,7 +191,7 @@
       if (window.__aiMoments) { body.moments = window.__aiMoments; window.__aiMoments = null; }
     }
     if (path === '/live/start' && body && window.__liveOpts) body = { ...styleFields(), ...window.__liveOpts(), ...body };
-    if (typeof path === 'string' && /^\/live\/[^/]+\/clip-now$/.test(path) && window.__liveOpts) body = { seconds: Number($('lv-len').value) || 38, ...(body || {}) };
+    if (typeof path === 'string' && /^\/live\/[^/]+\/clip-now$/.test(path) && window.__liveOpts) body = { seconds: Number($('lv-len')?.value) || 38, ...(body || {}) };
     if (path === '/clips/reedit' && body && body.changes) body = { ...body, changes: { ...body.changes, ...styleState() } };
     const p = baseRequest(path, body);
     if (typeof path === 'string' && path.startsWith('/make/')) {
@@ -224,7 +224,7 @@
       '<label id="lv-hook-wrap" hidden>Your hook<input id="lv-hook-text" type="text" maxlength="70" placeholder="Hook text on top"></label>' +
       '<label class="check"><input id="lv-caps" type="checkbox" checked> Captions on live clips (off = faster)</label>';
     liveBox.parentNode.insertBefore(opts, liveBox);
-    $('lv-hook').addEventListener('change', () => { $('lv-hook-wrap').hidden = $('lv-hook').value !== 'custom'; });
+    if ($('lv-hook')) $('lv-hook').addEventListener('change', () => { if ($('lv-hook-wrap')) $('lv-hook-wrap').hidden = $('lv-hook')?.value !== 'custom'; });
     const hype = document.createElement('div');
     hype.className = 'hype';
     hype.innerHTML = '<div class="hype-top"><b>🔥 Chat hype</b><span id="lv-hype-label" class="muted">waiting…</span></div><div class="meter"><i id="lv-hype-bar"></i></div><small class="muted" id="lv-hype-info"></small>';
@@ -234,16 +234,24 @@
     liveBox.parentNode.insertBefore(phoneBox, opts.nextSibling);
     const PRE = { 10: [7, 3], 20: [12, 8], 30: [20, 10], 0: [24, 14] };
     window.__liveOpts = () => {
-      const len = Number($('lv-len').value), [before, after] = PRE[len];
-      return { before, after, captions: $('lv-caps').checked, hook_mode: $('lv-hook').value, hook_text: $('lv-hook-text').value.trim() };
+      const len = Number($('lv-len')?.value || 20);
+      const [before, after] = PRE[len] || [12, 8];
+      return {
+        before,
+        after,
+        captions: $('lv-caps') ? $('lv-caps').checked : true,
+        hook_mode: $('lv-hook')?.value || 'ai',
+        hook_text: $('lv-hook-text')?.value?.trim() || ''
+      };
     };
     setInterval(async () => {
       if (typeof liveId === 'undefined' || !liveId || document.hidden) return;
       try {
         const s = await baseRequest('/live/' + liveId);
         const h = s.hype || 0;
-        $('lv-hype-bar').style.width = h + '%'; $('lv-hype-label').textContent = h + '% · ' + (s.hype_label || '');
-        $('lv-hype-info').textContent = (s.msgs30 || 0) + ' comments in the last 30 s (usual ' + s.baseline + ' per 10 s)' + (s.title ? ' · ' + s.title.slice(0, 60) : '');
+        if ($('lv-hype-bar')) $('lv-hype-bar').style.width = h + '%';
+        if ($('lv-hype-label')) $('lv-hype-label').textContent = h + '% · ' + (s.hype_label || '');
+        if ($('lv-hype-info')) $('lv-hype-info').textContent = (s.msgs30 || 0) + ' comments in the last 30 s (usual ' + s.baseline + ' per 10 s)' + (s.title ? ' · ' + s.title.slice(0, 60) : '');
       } catch (e) { /* the session ended or the app restarted */ }
     }, 2000);
     async function loadPhone() {
@@ -271,11 +279,11 @@
     const k = e.key.toLowerCase();
     const t = Math.round(vid.currentTime * 100) / 100;
     if (k === 'i') {
-      const end = Number($('end').value);
+      const end = Number($('end')?.value || 0);
       window.setRange(t, end > t + 1 ? end : Math.min(t + 30, sourceDuration || t + 30));
       status('In point set to ' + t.toFixed(2) + ' s');
     } else if (k === 'o') {
-      const start = Number($('start').value);
+      const start = Number($('start')?.value || 0);
       if (t > start + .5) { window.setRange(start, t); status('Out point set to ' + t.toFixed(2) + ' s'); } else status('Move the video past the in point first.');
     } else if (k === ' ') { e.preventDefault(); if (vid.paused) vid.play(); else vid.pause(); }
   });
@@ -287,7 +295,7 @@
 
   // ---- AI parts
   let aiInfo = null, aiMoments = [];
-  const aiStatus = t => { $('ai-status').textContent = t; };
+  const aiStatus = t => { if ($('ai-status')) $('ai-status').textContent = t; };
   async function copyText(text, btn) {
     try { await navigator.clipboard.writeText(text); } catch (e) {
       const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
@@ -296,10 +304,10 @@
   }
   if ($('ai-split')) {
     $('ai-split').onclick = async () => {
-      const url = $('ai-url').value.trim(); if (!url) { aiStatus('Paste a YouTube link first.'); return; }
-      $('ai-split').disabled = true; aiStatus('Reading the video and its captions…'); $('ai-list').replaceChildren();
+      const url = $('ai-url')?.value?.trim() || ''; if (!url) { aiStatus('Paste a YouTube link first.'); return; }
+      $('ai-split').disabled = true; aiStatus('Reading the video and its captions…'); if ($('ai-list')) $('ai-list').replaceChildren();
       try {
-        const body = { url, per_part: Number($('ai-per').value) || 3 }; if ($('ai-parts').value) body.parts = Number($('ai-parts').value);
+        const body = { url, per_part: Number($('ai-per')?.value) || 3 }; if ($('ai-parts')?.value) body.parts = Number($('ai-parts').value);
         body.min_len = Number($('minlen') ? $('minlen').value : 30); body.max_len = Number($('length') ? $('length').value : 60);
         aiInfo = await request('/ai/parts', body);
         aiStatus(aiInfo.parts.length + ' parts for “' + aiInfo.title + '”. Paste each prompt into a chatbot (one chat per part works best), then paste all answers below.');
@@ -308,31 +316,31 @@
           const t = document.createElement('b'); t.textContent = 'Part ' + p.index + ' · ' + p.label;
           const m = document.createElement('small'); m.textContent = p.lines + ' lines · ' + Math.round(p.chars / 1000) + 'k characters';
           const c = document.createElement('button'); c.className = 'secondary'; c.textContent = 'Copy prompt'; c.onclick = () => copyText(p.prompt, c);
-          d.append(t, m, c); $('ai-list').append(d);
+          d.append(t, m, c); if ($('ai-list')) $('ai-list').append(d);
         }
       } catch (e) { aiStatus('⚠ ' + e.message); } finally { $('ai-split').disabled = false; }
     };
-    $('ai-read').onclick = async () => {
+    if ($('ai-read')) $('ai-read').onclick = async () => {
       try {
-        const r = await request('/ai/answers', { text: $('ai-answers').value, duration: aiInfo ? aiInfo.duration : null });
-        aiMoments = r.moments; $('ai-moments').replaceChildren();
+        const r = await request('/ai/answers', { text: $('ai-answers')?.value || '', duration: aiInfo ? aiInfo.duration : null });
+        aiMoments = r.moments; if ($('ai-moments')) $('ai-moments').replaceChildren();
         r.moments.forEach((m, i) => {
           const d = document.createElement('label'); d.className = 'queue-item';
           const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true; cb.dataset.i = i;
           const t = document.createElement('b'); t.textContent = m.start_label + ' → ' + m.end_label + ' · ' + (m.title || 'Moment ' + (i + 1));
-          d.append(cb, t); $('ai-moments').append(d);
+          d.append(cb, t); if ($('ai-moments')) $('ai-moments').append(d);
         });
-        if (r.rejected.length) { const n = document.createElement('small'); n.textContent = r.rejected.length + ' lines skipped: ' + r.rejected.slice(0, 3).map(x => x.why).join(', '); $('ai-moments').append(n); }
-        $('ai-make').disabled = false; aiStatus(r.moments.length + ' moments ready.');
-      } catch (e) { aiStatus('⚠ ' + e.message); $('ai-make').disabled = true; }
+        if (r.rejected.length && $('ai-moments')) { const n = document.createElement('small'); n.textContent = r.rejected.length + ' lines skipped: ' + r.rejected.slice(0, 3).map(x => x.why).join(', '); $('ai-moments').append(n); }
+        if ($('ai-make')) $('ai-make').disabled = false; aiStatus(r.moments.length + ' moments ready.');
+      } catch (e) { aiStatus('⚠ ' + e.message); if ($('ai-make')) $('ai-make').disabled = true; }
     };
-    $('ai-make').onclick = () => {
-      const picked = [...$('ai-moments').querySelectorAll('input[type=checkbox]')].filter(c => c.checked).map(c => aiMoments[Number(c.dataset.i)]);
+    if ($('ai-make')) $('ai-make').onclick = () => {
+      const picked = [...($('ai-moments') ? $('ai-moments').querySelectorAll('input[type=checkbox]') : [])].filter(c => c.checked).map(c => aiMoments[Number(c.dataset.i)]);
       if (!picked.length) { aiStatus('Tick at least one moment.'); return; }
-      const url = (aiInfo && aiInfo.url) || $('ai-url').value.trim();
-      $('url').value = url; window.__aiMoments = picked.map(m => ({ start: m.start, end: m.end, title: m.title, hook: m.hook }));
+      const url = (aiInfo && aiInfo.url) || $('ai-url')?.value?.trim() || '';
+      if ($('url')) $('url').value = url; window.__aiMoments = picked.map(m => ({ start: m.start, end: m.end, title: m.title, hook: m.hook }));
       aiStatus('Making ' + picked.length + ' clips… watch the progress in step 01 / Make clips.');
-      $('make').scrollIntoView({ behavior: 'smooth' }); $('make').click();
+      if ($('make')) { $('make').scrollIntoView({ behavior: 'smooth' }); $('make').click(); }
     };
   }
 })();
