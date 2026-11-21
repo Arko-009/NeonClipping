@@ -63,7 +63,7 @@ def attach(app, SAVED: Path, probe):
             'clips': clips
         }
 
-    @app.get('/media-saved/{filename}')
+    @app.api_route('/media-saved/{filename}', methods=['GET', 'HEAD'])
     def media_saved(filename: str):
         filename = unquote(filename)
         target = (SAVED / filename).resolve()
