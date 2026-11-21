@@ -94,48 +94,87 @@ class InstagramPublisher:
             except Exception as e:
                 logger.warning(f"Long-lived token exchange failed, using provided token: {e}")
 
-        # 2. Query Facebook Pages to discover linked Instagram Business/Creator Account
-        accounts_url = f"{GRAPH_API_BASE}/me/accounts"
-        params = {
-            "fields": "id,name,access_token,instagram_business_account{id,username,name}",
-            "access_token": token
-        }
-        res = requests.get(accounts_url, params=params, timeout=15)
-        if res.status_code != 200:
-            err = res.json().get("error", {}).get("message", res.text)
-            raise RuntimeError(f"Meta Graph API error: {err}")
-
-        data = res.json().get("data", [])
-        if not data:
-            raise RuntimeError(
-                "No Facebook Pages found for this account. "
-                "Please link your Instagram Creator account to a Facebook Page in Instagram Settings."
-            )
-
+        # 2. Try multiple discovery paths for Instagram Business/Creator Account
         ig_account = None
         linked_page = None
-        for page in data:
-            ig = page.get("instagram_business_account")
-            if ig and ig.get("id"):
-                ig_account = ig
-                linked_page = page
-                break
+        page_token = token
+
+        # Path A: Token might be a Page Access Token directly
+        try:
+            me_res = requests.get(f"{GRAPH_API_BASE}/me", params={
+                "fields": "id,name,instagram_business_account{id,username,name}",
+                "access_token": token
+            }, timeout=15)
+            if me_res.status_code == 200:
+                me_data = me_res.json()
+                if me_data.get("instagram_business_account"):
+                    ig_account = me_data["instagram_business_account"]
+                    linked_page = {"id": me_data.get("id"), "name": me_data.get("name", "Page")}
+                    page_token = token
+                    logger.info("Found Instagram account via direct Page token")
+        except Exception:
+            pass
+
+        # Path B: User Token -> /me/accounts
+        if not ig_account:
+            accounts_url = f"{GRAPH_API_BASE}/me/accounts"
+            params = {
+                "fields": "id,name,access_token,instagram_business_account{id,username,name}",
+                "access_token": token
+            }
+            res = requests.get(accounts_url, params=params, timeout=15)
+            if res.status_code == 200:
+                data = res.json().get("data", [])
+                for page in data:
+                    ig = page.get("instagram_business_account")
+                    if ig and ig.get("id"):
+                        ig_account = ig
+                        linked_page = page
+                        page_token = page.get("access_token", token)
+                        logger.info("Found Instagram account via /me/accounts")
+                        break
+
+        # Path C: User Token -> /me/businesses (Meta Business Suite Portfolio)
+        if not ig_account:
+            try:
+                biz_url = f"{GRAPH_API_BASE}/me/businesses"
+                biz_params = {
+                    "fields": "id,name,owned_pages{id,name,access_token,instagram_business_account{id,username,name}}",
+                    "access_token": token
+                }
+                b_res = requests.get(biz_url, params=biz_params, timeout=15)
+                if b_res.status_code == 200:
+                    for b in b_res.json().get("data", []):
+                        for page in b.get("owned_pages", {}).get("data", []):
+                            ig = page.get("instagram_business_account")
+                            if ig and ig.get("id"):
+                                ig_account = ig
+                                linked_page = page
+                                page_token = page.get("access_token", token)
+                                logger.info("Found Instagram account via /me/businesses")
+                                break
+                        if ig_account:
+                            break
+            except Exception:
+                pass
 
         if not ig_account:
             raise RuntimeError(
-                "No Instagram Creator/Business account linked to your Facebook Pages. "
-                "Ensure your Instagram account is switched to Professional/Creator and linked to a Facebook Page."
+                "No Instagram Creator/Business account found linked to your Facebook Pages. "
+                "In Graph API Explorer, make sure you also add the 'business_management' permission, "
+                "or select your Page ('Tech Media') under the 'Get Token' dropdown."
             )
 
         ig_id = ig_account["id"]
-        ig_username = ig_account.get("username", "Arko007")
-        page_name = linked_page.get("name", "Connected Page")
+        ig_username = ig_account.get("username", "techmedia09")
+        page_name = linked_page.get("name", "Tech Media") if linked_page else "Tech Media"
 
         creds = {
-            "access_token": token,
+            "access_token": page_token or token,
+            "user_token": token,
             "instagram_account_id": ig_id,
             "username": ig_username,
-            "page_id": linked_page.get("id"),
+            "page_id": linked_page.get("id") if linked_page else None,
             "page_name": page_name,
             "connected_at": time.time()
         }
