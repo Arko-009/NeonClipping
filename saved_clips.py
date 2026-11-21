@@ -13,6 +13,8 @@ def attach(app, SAVED: Path, probe):
         clips = []
         total_bytes = 0
         for p in SAVED.glob('*.mp4'):
+            if p.name.startswith('_'):
+                continue
             try:
                 st = p.stat()
                 size_bytes = st.st_size
@@ -86,6 +88,12 @@ def attach(app, SAVED: Path, probe):
         if srt.exists():
             try:
                 srt.unlink(missing_ok=True)
+            except OSError:
+                pass
+        ig_cache = SAVED / f"_ig_norm_{target.stem}.mp4"
+        if ig_cache.exists():
+            try:
+                ig_cache.unlink(missing_ok=True)
             except OSError:
                 pass
         return {'ok': True, 'deleted': filename}

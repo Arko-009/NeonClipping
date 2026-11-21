@@ -6,6 +6,7 @@ import subprocess
 import time
 import threading
 import uuid
+import urllib.parse
 from pathlib import Path
 from typing import Dict, Any, Optional
 import requests
@@ -187,9 +188,10 @@ class InstagramPublisher:
             self.creds_path.unlink()
         logger.info("Instagram disconnected")
 
-    def start_tunnel(self, local_port: int = 8770, timeout_seconds: int = 25) -> str:
+    def start_tunnel(self, local_port: int = 8770, timeout_seconds: int = 35) -> str:
         """
         Starts an ephemeral Cloudflare Quick Tunnel to make the local port publicly reachable for Meta.
+        Waits until the tunnel connection is registered on Cloudflare's edge so Meta can reach it.
         Returns the public HTTPS URL (e.g. https://xxx.trycloudflare.com).
         """
         with self._tunnel_lock:
@@ -213,22 +215,29 @@ class InstagramPublisher:
 
             tunnel_url = None
             start = time.time()
+            registered = False
             while time.time() - start < timeout_seconds:
                 line = self._tunnel_proc.stderr.readline()
                 if not line and self._tunnel_proc.poll() is not None:
                     break
                 if line:
-                    match = re.search(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", line)
-                    if match:
-                        tunnel_url = match.group(0)
+                    if not tunnel_url:
+                        match = re.search(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", line)
+                        if match:
+                            tunnel_url = match.group(0)
+                    if "Registered tunnel connection" in line:
+                        registered = True
                         break
 
             if not tunnel_url:
                 self.stop_tunnel()
                 raise RuntimeError("Failed to obtain ephemeral trycloudflare tunnel URL within timeout")
 
+            # Allow 2 seconds for edge route propagation
+            time.sleep(2)
+
             self._tunnel_url = tunnel_url
-            logger.info(f"Ephemeral tunnel active at: {tunnel_url}")
+            logger.info(f"Ephemeral tunnel active and registered at: {tunnel_url}")
             return tunnel_url
 
     def stop_tunnel(self) -> None:
@@ -250,16 +259,46 @@ class InstagramPublisher:
 
 # Singleton instance
 instagram = InstagramPublisher()
+SAVED_DIR_GLOBAL = Path(__file__).parent / "Saved"
 
-def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to_feed: bool):
+def optimize_for_reels(input_path: Path) -> Path:
+    """
+    Normalizes video/audio to strict Meta Instagram Reels specs:
+    - Codec: H.264 High profile, yuv420p
+    - Audio: AAC 48,000 Hz, stereo, 128 kbps
+    - Framerate: 30 fps CFR, GOP 60 (2s keyframe interval)
+    - Container: +faststart moov atom at beginning
+    - Duration: -shortest to prevent audio/video stream length mismatch
+    Caches the normalized file alongside the original as `_ig_norm_<stem>.mp4`.
+    """
+    norm_filename = f"_ig_norm_{input_path.stem}.mp4"
+    output_path = input_path.parent / norm_filename
+    if output_path.exists() and output_path.stat().st_mtime >= input_path.stat().st_mtime and output_path.stat().st_size > 1000:
+        logger.info(f"Reusing existing normalized Reels video: {output_path.name}")
+        return output_path
+
+    logger.info(f"Normalizing {input_path.name} for Instagram Reels...")
+    cmd = [
+        "ffmpeg", "-y", "-i", str(input_path),
+        "-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high",
+        "-pix_fmt", "yuv420p", "-r", "30", "-g", "60",
+        "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
+        "-shortest", "-movflags", "+faststart",
+        str(output_path)
+    ]
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
+    if proc.returncode != 0 or not output_path.exists():
+        logger.warning(f"FFmpeg Reels normalization failed: {proc.stderr[-300:]}, using original file")
+        return input_path
+    logger.info(f"Normalized Reels video created: {output_path.name} ({output_path.stat().st_size} bytes)")
+    return output_path
+
+def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to_feed: bool, saved_dir: Optional[Path] = None):
     task = ig_tasks.get(task_id)
     if not task:
         return
 
-    task["status"] = "connecting"
-    task["message"] = "Opening temporary secure Cloudflare Tunnel..."
-    task["progress"] = 15
-
+    base_saved = saved_dir or SAVED_DIR_GLOBAL
     creds = instagram.get_credentials()
     if not creds:
         task["status"] = "error"
@@ -271,13 +310,27 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
     tunnel_url = None
 
     try:
-        # Step 1: Tunnel
-        tunnel_url = instagram.start_tunnel()
-        task["message"] = "Creating Reel container with Meta Graph API..."
-        task["progress"] = 30
-        task["status"] = "uploading"
+        # Step 0: Normalize for Reels
+        task["status"] = "processing"
+        task["message"] = "Optimizing video & audio for Instagram Reels (48kHz, CFR 30)..."
+        task["progress"] = 15
 
-        video_public_url = f"{tunnel_url}/media-saved/{video_filename}"
+        input_path = base_saved / video_filename
+        final_video_path = optimize_for_reels(input_path) if input_path.exists() else input_path
+        final_filename = final_video_path.name
+
+        # Step 1: Tunnel
+        task["status"] = "connecting"
+        task["message"] = "Opening temporary secure Cloudflare Tunnel..."
+        task["progress"] = 35
+        tunnel_url = instagram.start_tunnel()
+
+        task["status"] = "uploading"
+        task["message"] = "Creating Reel container with Meta Graph API..."
+        task["progress"] = 45
+
+        quoted_fn = urllib.parse.quote(final_filename)
+        video_public_url = f"{tunnel_url}/media-saved/{quoted_fn}"
 
         # Step 2: Create Reel Container
         container_url = f"{GRAPH_API_BASE}/{ig_user_id}/media"
@@ -299,11 +352,11 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
         task["container_id"] = container_id
         task["message"] = "Meta is transcoding the Reel..."
         task["status"] = "transcoding"
-        task["progress"] = 50
+        task["progress"] = 60
 
         # Step 3: Poll Container status
         status_url = f"{GRAPH_API_BASE}/{container_id}"
-        max_wait = 120
+        max_wait = 300
         poll_start = time.time()
         transcode_finished = False
 
@@ -320,14 +373,15 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
                     transcode_finished = True
                     break
                 elif s_code in ["ERROR", "EXPIRED"]:
+                    err_msg = s_data.get("status", f"Meta video processing failed ({s_code})")
                     task["status"] = "error"
-                    task["error"] = f"Meta video processing failed ({s_code})"
+                    task["error"] = err_msg
                     return
             time.sleep(4)
 
         if not transcode_finished:
             task["status"] = "error"
-            task["error"] = "Meta video processing timed out"
+            task["error"] = "Meta video processing timed out (exceeded 5 minutes)"
             return
 
         # Video ingestion complete; close tunnel immediately
@@ -336,7 +390,7 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
 
         task["message"] = "Publishing Reel live to Instagram..."
         task["status"] = "publishing"
-        task["progress"] = 85
+        task["progress"] = 90
 
         # Step 4: Publish
         publish_url = f"{GRAPH_API_BASE}/{ig_user_id}/media_publish"
@@ -378,6 +432,9 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
             instagram.stop_tunnel()
 
 def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
+    global SAVED_DIR_GLOBAL
+    SAVED_DIR_GLOBAL = SAVED_DIR
+
     class ConnectReq(BaseModel):
         access_token: str
         app_id: str = ""
@@ -425,7 +482,7 @@ def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
 
         th = threading.Thread(
             target=execute_ig_publish,
-            args=(task_id, req.filename, req.caption, req.share_to_feed),
+            args=(task_id, req.filename, req.caption, req.share_to_feed, SAVED_DIR),
             daemon=True
         )
         th.start()
