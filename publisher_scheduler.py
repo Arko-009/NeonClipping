@@ -172,6 +172,17 @@ class PublisherScheduler:
             return True
         return False
 
+    def _sync_remove_from_cloud_queue(self, container_id: str):
+        try:
+            cloud_queue_file = self.data_dir / "ig_cloud_queue.json"
+            if cloud_queue_file.exists():
+                items = json.loads(cloud_queue_file.read_text(encoding="utf-8"))
+                new_items = [x for x in items if x.get("container_id") != container_id]
+                if len(new_items) != len(items):
+                    cloud_queue_file.write_text(json.dumps(new_items, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
     # ---- BACKGROUND DISPATCHER FOR PRE-STAGED INSTAGRAM POSTS ----
     def _background_poll(self):
         while self._worker_running:
@@ -217,12 +228,41 @@ class PublisherScheduler:
                                         scheduled.remove(item)
                                         modified = True
                                         print(f"[Scheduler] Scheduled Instagram publish SUCCESS: {permalink}")
+                                        self._sync_remove_from_cloud_queue(container_id)
                                     else:
                                         err = pub_res.text
-                                        item["status"] = "error"
-                                        item["error"] = err
-                                        modified = True
-                                        print(f"[Scheduler] Scheduled Instagram publish failed: {err}")
+                                        err_lower = err.lower()
+                                        if "already published" in err_lower or "has been published" in err_lower or "already been published" in err_lower:
+                                            permalink = f"https://www.instagram.com/"
+                                            item["status"] = "published"
+                                            item["published_at"] = item.get("scheduled_at", time.time())
+                                            item["permalink"] = permalink
+                                            data.setdefault("history", []).append({
+                                                "id": item["id"],
+                                                "platform": "instagram",
+                                                "video_filename": item["video_filename"],
+                                                "title": item["title"],
+                                                "url": permalink,
+                                                "status": "published",
+                                                "created_at": item["created_at"],
+                                                "published_at": item.get("scheduled_at", time.time()),
+                                                "meta": {"scheduled": True, "source": "cloud_dispatcher"}
+                                            })
+                                            scheduled.remove(item)
+                                            modified = True
+                                            print(f"[Scheduler] Container was already published by Cloud Dispatcher: {container_id}")
+                                            self._sync_remove_from_cloud_queue(container_id)
+                                        elif "expired" in err_lower:
+                                            item["status"] = "expired"
+                                            scheduled.remove(item)
+                                            modified = True
+                                            print(f"[Scheduler] Container expired on Meta Cloud: {container_id}")
+                                            self._sync_remove_from_cloud_queue(container_id)
+                                        else:
+                                            item["status"] = "error"
+                                            item["error"] = err
+                                            modified = True
+                                            print(f"[Scheduler] Scheduled Instagram publish failed: {err}")
                                 except Exception as e:
                                     item["status"] = "error"
                                     item["error"] = str(e)

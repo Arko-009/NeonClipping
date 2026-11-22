@@ -59,7 +59,7 @@ def main():
                 else:
                     err = res.text
                     print(f"[Dispatcher] FAILED to publish container {container_id}: {err}")
-                    if "expired" in err.lower() or "already published" in err.lower():
+                    if "expired" in err.lower() or "already published" in err.lower() or "has been published" in err.lower() or "already been published" in err.lower():
                         continue
                     remaining.append(item)
             except Exception as e:
@@ -76,3 +76,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -630,6 +630,10 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
                 cwd=str(root_dir), capture_output=True, timeout=10
             )
             subprocess.run(
+                ["git", "pull", "--rebase", "origin", "main"],
+                cwd=str(root_dir), capture_output=True, timeout=20
+            )
+            subprocess.run(
                 ["git", "push", "origin", "main"],
                 cwd=str(root_dir), capture_output=True, timeout=20
             )
