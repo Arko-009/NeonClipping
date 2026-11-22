@@ -78,7 +78,7 @@ def get_channel_info(creds):
     except Exception as e:
         return {'channel_id': 'default', 'title': 'Connected Channel', 'error': str(e)}
 
-def execute_upload(task_id: str, root_dir: Path, video_path: Path, title: str, description: str, tags: list, privacy: str):
+def execute_upload(task_id: str, root_dir: Path, video_path: Path, title: str, description: str, tags: list, privacy: str, publish_at: str = None):
     task = upload_tasks[task_id]
     task['status'] = 'uploading'
     task['progress'] = 0
@@ -91,6 +91,16 @@ def execute_upload(task_id: str, root_dir: Path, video_path: Path, title: str, d
             return
 
         service = build('youtube', 'v3', credentials=creds)
+
+        status_body = {
+            'selfDeclaredMadeForKids': False
+        }
+        if publish_at:
+            status_body['privacyStatus'] = 'private'
+            status_body['publishAt'] = publish_at
+        else:
+            status_body['privacyStatus'] = privacy
+
         body = {
             'snippet': {
                 'title': title[:100],
@@ -98,10 +108,7 @@ def execute_upload(task_id: str, root_dir: Path, video_path: Path, title: str, d
                 'tags': tags,
                 'categoryId': '20'  # Gaming
             },
-            'status': {
-                'privacyStatus': privacy,
-                'selfDeclaredMadeForKids': False
-            }
+            'status': status_body
         }
 
         media = MediaFileUpload(
@@ -130,7 +137,35 @@ def execute_upload(task_id: str, root_dir: Path, video_path: Path, title: str, d
         task['video_id'] = video_id
         task['shorts_url'] = f"https://youtube.com/shorts/{video_id}"
         task['watch_url'] = f"https://youtu.be/{video_id}"
-        task['message'] = "Uploaded successfully!"
+
+        if publish_at:
+            task['scheduled'] = True
+            task['publish_at'] = publish_at
+            task['message'] = f"Cloud Scheduled! Will go public automatically at {publish_at}."
+            try:
+                import publisher_scheduler
+                import datetime
+                dt = datetime.datetime.fromisoformat(publish_at.replace('Z', '+00:00'))
+                publisher_scheduler.scheduler.log_publish(
+                    "youtube", video_path.name, title, task['shorts_url'], status="scheduled",
+                    meta={"publish_at": publish_at, "video_id": video_id}
+                )
+                publisher_scheduler.scheduler.add_scheduled(
+                    "youtube", video_path.name, title, dt.timestamp(), publish_at,
+                    {"video_id": video_id, "shorts_url": task['shorts_url']}
+                )
+            except Exception:
+                pass
+        else:
+            task['message'] = "Uploaded successfully!"
+            try:
+                import publisher_scheduler
+                publisher_scheduler.scheduler.log_publish(
+                    "youtube", video_path.name, title, task['shorts_url'], status="published",
+                    meta={"video_id": video_id}
+                )
+            except Exception:
+                pass
     except HttpError as e:
         task['status'] = 'error'
         try:
@@ -149,6 +184,7 @@ def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
         description: str = None
         tags: list = None
         privacy: str = "public"
+        publish_at: str = None
 
     @app.get('/youtube/status')
     def yt_status():
@@ -253,7 +289,7 @@ def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
 
         th = threading.Thread(
             target=execute_upload,
-            args=(task_id, ROOT_DIR, target, title, description, tags, privacy),
+            args=(task_id, ROOT_DIR, target, title, description, tags, privacy, req.publish_at),
             daemon=True
         )
         th.start()

@@ -215,7 +215,8 @@ details.panel>summary{cursor:pointer;list-style:none;font-size:16px}details.pane
 
 /* ---- YouTube & Instagram Social Publishing Integrations ---- */
 .publish-integrations-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:20px}
-.yt-account-card{background:linear-gradient(135deg,#1f1118,#140d1a);border:1px solid #5a2034;border-radius:14px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:15px;margin:0;flex-wrap:wrap}
+.yt-account-card{background:linear-gradient(135deg,#1f1118,#140d1a);border:1px solid #5a2034;border-radius:14px;padding:16px 20px;display:flex;flex-direction:column;align-items:stretch;gap:12px;margin:0}
+.yt-card-top{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
 .yt-account-info{display:flex;align-items:center;gap:14px}
 .yt-logo-badge{display:flex;align-items:center;justify-content:center;width:38px;height:38px;background:#ff0033;color:#fff;border-radius:10px;font-size:18px;font-weight:900;box-shadow:0 0 15px rgba(255,0,51,.5);flex-shrink:0}
 .yt-text-meta{display:flex;flex-direction:column;gap:3px}
@@ -225,7 +226,8 @@ details.panel>summary{cursor:pointer;list-style:none;font-size:16px}details.pane
 .yt-btn:hover{background:#ff2e58!important;border-color:#ff2e58!important;box-shadow:0 0 15px rgba(255,0,51,.5)}
 .yt-btn.connected{background:#1e3524!important;border-color:#346d43!important;color:#85e89d!important;cursor:default}
 
-.ig-account-card{background:linear-gradient(135deg,#210f1e,#140b1a);border:1px solid #5a1e4a;border-radius:14px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:15px;margin:0;flex-wrap:wrap}
+.ig-account-card{background:linear-gradient(135deg,#210f1e,#140b1a);border:1px solid #5a1e4a;border-radius:14px;padding:16px 20px;display:flex;flex-direction:column;align-items:stretch;gap:12px;margin:0}
+.ig-card-top{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
 .ig-account-info{display:flex;align-items:center;gap:14px}
 .ig-logo-badge{display:flex;align-items:center;justify-content:center;width:38px;height:38px;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);color:#fff;border-radius:10px;font-size:18px;font-weight:900;box-shadow:0 0 15px rgba(220,39,67,.5);flex-shrink:0}
 .ig-text-meta{display:flex;flex-direction:column;gap:3px}
@@ -234,6 +236,45 @@ details.panel>summary{cursor:pointer;list-style:none;font-size:16px}details.pane
 .ig-btn{background:linear-gradient(45deg,#f09433,#dc2743,#bc1888)!important;border:1px solid #dc2743!important;color:#fff!important;font-weight:700;padding:7px 15px!important;border-radius:8px!important;cursor:pointer;transition:all .15s}
 .ig-btn:hover{box-shadow:0 0 15px rgba(220,39,67,.5);transform:translateY(-1px)}
 .ig-btn.connected{background:#1e3524!important;border-color:#346d43!important;color:#85e89d!important;cursor:pointer}
+
+/* ---- Quota Progress & Scheduled Queue ---- */
+.quota-monitor-row{background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:9px 12px;display:flex;flex-direction:column;gap:6px}
+.quota-stat-text{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#eee}
+.quota-title{color:var(--muted);font-weight:600;margin-right:4px}
+.quota-sub{font-size:10.5px;color:var(--cyan);font-weight:500}
+.quota-progress-track{width:100%;height:6px;background:rgba(255,255,255,0.08);border-radius:999px;overflow:hidden}
+.quota-progress-fill{height:100%;background:linear-gradient(90deg,#ff0033,#ff4ba5);border-radius:999px;transition:width 0.3s ease}
+.quota-progress-fill.ig{background:linear-gradient(90deg,#f09433,#dc2743,#bc1888)}
+.scheduled-queue-section{border-top:1px solid rgba(255,255,255,0.06);padding-top:8px}
+.scheduled-queue-header{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;font-weight:700;color:var(--cyan);cursor:pointer;padding:4px 6px;border-radius:6px;user-select:none;transition:background 0.15s}
+.scheduled-queue-header:hover{background:rgba(255,255,255,0.05)}
+.queue-chevron{font-size:10px;transition:transform 0.2s}
+.queue-chevron.open{transform:rotate(180deg)}
+.scheduled-queue-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;max-height:180px;overflow-y:auto}
+.empty-queue-msg{font-size:11px;color:var(--muted);font-style:italic;padding:6px}
+.scheduled-item-card{display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);border-radius:7px;padding:6px 10px;font-size:11px}
+.scheduled-item-left{display:flex;flex-direction:column;gap:2px;overflow:hidden}
+.scheduled-item-title{font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
+.scheduled-item-time{font-size:10px;color:var(--cyan)}
+.scheduled-item-right{display:flex;align-items:center;gap:8px}
+.scheduled-cancel-btn{background:transparent;border:1px solid #ff4ba5;color:#ff86be;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;transition:all 0.15s}
+.scheduled-cancel-btn:hover{background:rgba(255,75,165,0.25)}
+
+/* ---- Modal Mode Toggle & Date Picker ---- */
+.publish-mode-selector{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.publish-mode-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px}
+.publish-mode-toggle-group{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mode-toggle-btn{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);color:var(--muted);font-size:12px;font-weight:600;padding:8px 10px;border-radius:8px;cursor:pointer;transition:all 0.15s}
+.mode-toggle-btn:hover{background:rgba(255,255,255,0.08);color:#fff}
+.mode-toggle-btn.active{background:rgba(88,232,247,0.12);border-color:var(--cyan);color:#fff;box-shadow:0 0 10px rgba(88,232,247,0.2)}
+.schedule-config-box{margin-top:12px;background:rgba(0,0,0,0.3);border:1px dashed rgba(88,232,247,0.4);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.schedule-cloud-notice{font-size:11px;color:var(--cyan);line-height:1.5;background:rgba(88,232,247,0.08);padding:8px 10px;border-radius:6px}
+.schedule-cloud-notice.ig-notice{color:#ff86be;background:rgba(255,75,165,0.08);border:1px solid rgba(255,75,165,0.2)}
+.schedule-datetime-input{background:#11091c!important;border:1px solid rgba(255,255,255,0.2)!important;color:#fff!important;font-family:inherit;font-size:13px!important;padding:7px 10px!important;border-radius:6px!important;width:100%}
+.schedule-presets-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.presets-label{font-size:11px;color:var(--muted);font-weight:600}
+.preset-pill{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:#ddd;font-size:10.5px;padding:3px 8px;border-radius:999px;cursor:pointer;transition:all 0.15s}
+.preset-pill:hover{background:var(--cyan);color:#0b0713;border-color:var(--cyan);font-weight:700}
 .yt-upload-action-btn{background:linear-gradient(90deg,#ff0033,#ff4ba5)!important;border-color:#ff0033!important;color:#fff!important;font-weight:700!important;padding:8px 14px!important;border-radius:7px!important;cursor:pointer}
 .yt-upload-action-btn:hover{transform:translateY(-1px);box-shadow:0 0 12px rgba(255,0,51,.6)}
 .ig-upload-action-btn{background:linear-gradient(90deg,#833ab4,#fd1d1d,#fcb045)!important;border:none!important;color:#fff!important;font-weight:700!important;padding:8px 14px!important;border-radius:7px!important;cursor:pointer;transition:all .15s}

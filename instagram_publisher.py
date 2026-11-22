@@ -295,7 +295,7 @@ def optimize_for_reels(input_path: Path) -> Path:
     logger.info(f"Normalized Reels video created: {output_path.name} ({output_path.stat().st_size} bytes)")
     return output_path
 
-def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to_feed: bool, saved_dir: Optional[Path] = None):
+def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to_feed: bool, saved_dir: Optional[Path] = None, scheduled_at: Optional[float] = None, scheduled_time_str: Optional[str] = None):
     task = ig_tasks.get(task_id)
     if not task:
         return
@@ -390,6 +390,33 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
         instagram.stop_tunnel()
         tunnel_url = None
 
+        if scheduled_at and scheduled_at > time.time() + 60:
+            task["status"] = "done"
+            task["progress"] = 100
+            task["scheduled"] = True
+            task["scheduled_at"] = scheduled_at
+            task["scheduled_time_str"] = scheduled_time_str or time.ctime(scheduled_at)
+            task["container_id"] = container_id
+            task["message"] = f"Pre-staged on Meta Cloud! Scheduled for {task['scheduled_time_str']}."
+
+            try:
+                import publisher_scheduler
+                publisher_scheduler.scheduler.add_scheduled(
+                    "instagram",
+                    video_filename,
+                    caption or video_filename,
+                    scheduled_at,
+                    task["scheduled_time_str"],
+                    {
+                        "container_id": container_id,
+                        "ig_user_id": ig_user_id,
+                        "access_token": token
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Failed to record scheduled Instagram post: {e}")
+            return
+
         task["message"] = "Publishing Reel live to Instagram..."
         task["status"] = "publishing"
         task["progress"] = 90
@@ -426,6 +453,15 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
         task["permalink"] = permalink
         task["message"] = "Reel successfully published!"
 
+        try:
+            import publisher_scheduler
+            publisher_scheduler.scheduler.log_publish(
+                "instagram", video_filename, caption or video_filename, permalink, status="published",
+                meta={"media_id": media_id}
+            )
+        except Exception:
+            pass
+
     except Exception as e:
         task["status"] = "error"
         task["error"] = str(e)
@@ -446,6 +482,8 @@ def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
         filename: str
         caption: str = None
         share_to_feed: bool = True
+        scheduled_at: float = None
+        scheduled_time_str: str = None
 
     @app.get('/instagram/status')
     def get_status():
@@ -484,7 +522,7 @@ def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
 
         th = threading.Thread(
             target=execute_ig_publish,
-            args=(task_id, req.filename, req.caption, req.share_to_feed, SAVED_DIR),
+            args=(task_id, req.filename, req.caption, req.share_to_feed, SAVED_DIR, req.scheduled_at, req.scheduled_time_str),
             daemon=True
         )
         th.start()

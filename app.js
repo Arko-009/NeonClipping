@@ -161,6 +161,143 @@ async function checkYouTubeStatus(){
  }catch(e){}
 }
 
+let currentYtPublishMode = 'now';
+let currentIgPublishMode = 'now';
+
+function formatLocalDateTime(d) {
+ const pad = n => String(n).padStart(2, '0');
+ return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+window.applySchedulePreset = function(platform, preset) {
+ const now = new Date();
+ let target = new Date(now.getTime() + 2 * 3600 * 1000);
+ if (preset === 2) {
+  target = new Date(now.getTime() + 2 * 3600 * 1000);
+ } else if (preset === 'tonight') {
+  target = new Date();
+  target.setHours(20, 0, 0, 0);
+  if (target.getTime() <= now.getTime()) {
+   target.setDate(target.getDate() + 1);
+  }
+ } else if (preset === 'tomorrow_morning') {
+  target = new Date();
+  target.setDate(target.getDate() + 1);
+  target.setHours(10, 0, 0, 0);
+ } else if (preset === 'tomorrow_evening') {
+  target = new Date();
+  target.setDate(target.getDate() + 1);
+  target.setHours(18, 0, 0, 0);
+ }
+ const input = $(platform + '-schedule-datetime');
+ if (input) input.value = formatLocalDateTime(target);
+};
+
+window.setYtPublishMode = function(mode) {
+ currentYtPublishMode = mode;
+ const nowBtn = $('yt-mode-now-btn');
+ const schedBtn = $('yt-mode-schedule-btn');
+ const container = $('yt-schedule-container');
+ const privBox = $('yt-privacy-control-box');
+ const submitBtn = $('yt-submit-upload-btn');
+
+ if (mode === 'schedule') {
+  if (nowBtn) nowBtn.classList.remove('active');
+  if (schedBtn) schedBtn.classList.add('active');
+  if (container) container.hidden = false;
+  if (privBox) privBox.hidden = true;
+  if (submitBtn) submitBtn.textContent = '📅 Schedule on YouTube Cloud';
+  const dtInput = $('yt-schedule-datetime');
+  if (dtInput && !dtInput.value) {
+   applySchedulePreset('yt', 2);
+  }
+ } else {
+  if (nowBtn) nowBtn.classList.add('active');
+  if (schedBtn) schedBtn.classList.remove('active');
+  if (container) container.hidden = true;
+  if (privBox) privBox.hidden = false;
+  if (submitBtn) submitBtn.textContent = '🚀 Upload to Shorts Now';
+ }
+};
+
+window.setIgPublishMode = function(mode) {
+ currentIgPublishMode = mode;
+ const nowBtn = $('ig-mode-now-btn');
+ const schedBtn = $('ig-mode-schedule-btn');
+ const container = $('ig-schedule-container');
+ const submitBtn = $('ig-submit-upload-btn');
+
+ if (mode === 'schedule') {
+  if (nowBtn) nowBtn.classList.remove('active');
+  if (schedBtn) schedBtn.classList.add('active');
+  if (container) container.hidden = false;
+  if (submitBtn) submitBtn.textContent = '📅 Pre-Stage & Schedule Reel';
+  const dtInput = $('ig-schedule-datetime');
+  if (dtInput && !dtInput.value) {
+   applySchedulePreset('ig', 2);
+  }
+ } else {
+  if (nowBtn) nowBtn.classList.add('active');
+  if (schedBtn) schedBtn.classList.remove('active');
+  if (container) container.hidden = true;
+  if (submitBtn) submitBtn.textContent = '🟣 Publish Reel Now';
+ }
+};
+
+window.toggleScheduledQueue = function(platform) {
+ const list = $(platform + '-scheduled-list');
+ const chevron = $(platform + '-queue-chevron');
+ if (!list) return;
+ const isHidden = list.hidden;
+ list.hidden = !isHidden;
+ if (chevron) {
+  if (isHidden) chevron.classList.add('open');
+  else chevron.classList.remove('open');
+ }
+};
+
+window.cancelScheduledPost = async function(id) {
+ if (!confirm('Cancel this scheduled post?')) return;
+ try {
+  const res = await request('/publishing/cancel-scheduled', { id });
+  if (res.ok) {
+   status('Scheduled post cancelled.');
+   await refreshSaved();
+  }
+ } catch (err) {
+  alert('Failed to cancel: ' + err.message);
+ }
+};
+
+function renderScheduledQueue(platform, items) {
+ const badge = $(platform + '-scheduled-badge');
+ if (badge) badge.textContent = items.length;
+ const list = $(platform + '-scheduled-list');
+ if (!list) return;
+ list.replaceChildren();
+
+ if (!items.length) {
+  const empty = document.createElement('div');
+  empty.className = 'empty-queue-msg';
+  empty.textContent = platform === 'youtube' ? 'No scheduled YouTube Shorts.' : 'No scheduled Instagram Reels.';
+  list.append(empty);
+  return;
+ }
+
+ for (const item of items) {
+  const card = document.createElement('div'); card.className = 'scheduled-item-card';
+  const left = document.createElement('div'); left.className = 'scheduled-item-left';
+  const timeStr = item.scheduled_time_str || (item.scheduled_at ? new Date(item.scheduled_at * 1000).toLocaleString() : '');
+  left.innerHTML = `<span class="scheduled-item-title" title="${item.title}">${item.title}</span><span class="scheduled-item-time">⏰ Release: ${timeStr}</span>`;
+  const right = document.createElement('div'); right.className = 'scheduled-item-right';
+  const cancelBtn = document.createElement('button'); cancelBtn.className = 'scheduled-cancel-btn'; cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = () => cancelScheduledPost(item.id);
+  right.append(cancelBtn);
+  card.append(left, right);
+  list.append(card);
+ }
+}
+
 function openYtUploadModal(c){
  currentYtClip=c;
  $('yt-modal-filename').textContent=c.filename;
@@ -170,7 +307,7 @@ function openYtUploadModal(c){
  $('yt-upload-progress-box').hidden=true;
  $('yt-upload-success-link').hidden=true;
  $('yt-submit-upload-btn').disabled=false;
- $('yt-submit-upload-btn').textContent='🚀 Upload to Shorts Now';
+ setYtPublishMode('now');
  $('yt-dialog').showModal();
 }
 
@@ -184,12 +321,31 @@ $('yt-submit-upload-btn').onclick=async()=>{
  $('yt-upload-success-link').hidden=true;
 
  try{
-  const res=await request('/youtube/upload',{
-   filename:currentYtClip.filename,
-   title:$('yt-title-input').value.trim(),
-   description:$('yt-desc-input').value.trim(),
-   privacy:$('yt-privacy-select').value
-  });
+  const isSchedule = currentYtPublishMode === 'schedule';
+  let publishAtIso = null;
+  if (isSchedule) {
+   const dtVal = $('yt-schedule-datetime')?.value;
+   if (!dtVal) {
+    throw Error('Please select a valid date and time to schedule this Short.');
+   }
+   const targetTime = new Date(dtVal);
+   if (targetTime.getTime() <= Date.now() + 60000) {
+    throw Error('Scheduled time must be at least 2 minutes into the future.');
+   }
+   publishAtIso = targetTime.toISOString();
+  }
+
+  const payload = {
+   filename: currentYtClip.filename,
+   title: $('yt-title-input').value.trim(),
+   description: $('yt-desc-input').value.trim(),
+   privacy: $('yt-privacy-select').value
+  };
+  if (publishAtIso) {
+   payload.publish_at = publishAtIso;
+  }
+
+  const res = await request('/youtube/upload', payload);
   if(!res.ok)throw Error('Upload request failed');
   const taskId=res.task_id;
   if(ytPollTimer)clearInterval(ytPollTimer);
@@ -201,13 +357,23 @@ $('yt-submit-upload-btn').onclick=async()=>{
     if(st.status==='done'){
      clearInterval(ytPollTimer);
      $('yt-upload-progress-bar').style.width='100%';
-     $('yt-upload-status-text').innerHTML='🎉 <span style="color:#58e8f7">Upload Complete!</span>';
      const linkBox=$('yt-upload-success-link');
      linkBox.hidden=false;
-     linkBox.innerHTML=`<a href="${st.shorts_url}" target="_blank" rel="noopener">🎬 Open Short on YouTube: ${st.shorts_url} ↗</a>`;
-     b.disabled=false;
-     b.textContent='Upload Again';
-     status('Short uploaded to YouTube: '+st.shorts_url);
+
+     if (st.scheduled) {
+      $('yt-upload-status-text').innerHTML='🎉 <span style="color:#58e8f7">Scheduled on YouTube Cloud!</span>';
+      linkBox.innerHTML=`<div style="line-height:1.6"><span style="color:#58e8f7;font-weight:700">☁ YouTube Cloud Schedule Verified!</span><br><span style="font-size:11px;color:#eee">Google servers will automatically publish this Short publicly at <b>${new Date(st.publish_at).toLocaleString()}</b>.<br>You can safely shut down your PC anytime.</span><br><a href="${st.shorts_url}" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px">🎬 View Private Video on YouTube: ${st.shorts_url} ↗</a></div>`;
+      b.disabled=false;
+      b.textContent='Schedule Another';
+      status('Short scheduled on YouTube Cloud for '+new Date(st.publish_at).toLocaleString());
+     } else {
+      $('yt-upload-status-text').innerHTML='🎉 <span style="color:#58e8f7">Upload Complete!</span>';
+      linkBox.innerHTML=`<a href="${st.shorts_url}" target="_blank" rel="noopener">🎬 Open Short on YouTube: ${st.shorts_url} ↗</a>`;
+      b.disabled=false;
+      b.textContent='Upload Again';
+      status('Short uploaded to YouTube: '+st.shorts_url);
+     }
+     await refreshSaved();
     }else if(st.status==='error'){
      clearInterval(ytPollTimer);
      $('yt-upload-status-text').innerHTML=`<span style="color:#ff4ba5">Failed: ${st.error}</span>`;
@@ -331,7 +497,7 @@ function openIgUploadModal(c){
  $('ig-upload-progress-box').hidden=true;
  $('ig-upload-success-link').hidden=true;
  $('ig-submit-upload-btn').disabled=false;
- $('ig-submit-upload-btn').textContent='🟣 Publish Reel Now';
+ setIgPublishMode('now');
  $('ig-upload-dialog').showModal();
 }
 
@@ -346,11 +512,33 @@ if($('ig-submit-upload-btn')){
   $('ig-upload-success-link').hidden=true;
 
   try{
-   const res=await request('/instagram/publish',{
-    filename:currentIgClip.filename,
-    caption:$('ig-caption-input').value.trim(),
-    share_to_feed:$('ig-share-feed-checkbox').checked
-   });
+   const isSchedule = currentIgPublishMode === 'schedule';
+   let scheduledAtSec = null;
+   let scheduledTimeStr = null;
+   if (isSchedule) {
+    const dtVal = $('ig-schedule-datetime')?.value;
+    if (!dtVal) {
+     throw Error('Please select a valid date and time to schedule this Reel.');
+    }
+    const targetTime = new Date(dtVal);
+    if (targetTime.getTime() <= Date.now() + 60000) {
+     throw Error('Scheduled time must be at least 2 minutes into the future.');
+    }
+    scheduledAtSec = Math.floor(targetTime.getTime() / 1000);
+    scheduledTimeStr = targetTime.toLocaleString();
+   }
+
+   const payload = {
+    filename: currentIgClip.filename,
+    caption: $('ig-caption-input').value.trim(),
+    share_to_feed: $('ig-share-feed-checkbox').checked
+   };
+   if (scheduledAtSec) {
+    payload.scheduled_at = scheduledAtSec;
+    payload.scheduled_time_str = scheduledTimeStr;
+   }
+
+   const res=await request('/instagram/publish', payload);
    const taskId=res.task_id;
    if(igPollTimer)clearInterval(igPollTimer);
    igPollTimer=setInterval(async()=>{
@@ -361,13 +549,23 @@ if($('ig-submit-upload-btn')){
      if(st.status==='done'){
       clearInterval(igPollTimer);
       $('ig-upload-progress-bar').style.width='100%';
-      $('ig-upload-status-text').innerHTML='🎉 <span style="color:#ff86be">Reel Published to Instagram!</span>';
       const linkBox=$('ig-upload-success-link');
       linkBox.hidden=false;
-      linkBox.innerHTML=`<a href="${st.permalink}" target="_blank" rel="noopener">🟣 Open Reel on Instagram: ${st.permalink} ↗</a>`;
-      b.disabled=false;
-      b.textContent='Publish Again';
-      status('Reel published to Instagram: '+st.permalink);
+
+      if (st.scheduled) {
+       $('ig-upload-status-text').innerHTML='🎉 <span style="color:#ff86be">Pre-Staged on Meta Cloud!</span>';
+       linkBox.innerHTML=`<div style="line-height:1.6"><span style="color:#ff86be;font-weight:700">☁ Meta Cloud Pre-Staging Complete!</span><br><span style="font-size:11px;color:#eee">Video is safely cached on Meta servers. NeonClipping will automatically publish it at <b>${st.scheduled_time_str}</b> with zero video re-upload.</span></div>`;
+       b.disabled=false;
+       b.textContent='Schedule Another';
+       status('Reel scheduled on Meta Cloud for '+st.scheduled_time_str);
+      } else {
+       $('ig-upload-status-text').innerHTML='🎉 <span style="color:#ff86be">Reel Published to Instagram!</span>';
+       linkBox.innerHTML=`<a href="${st.permalink}" target="_blank" rel="noopener">🟣 Open Reel on Instagram: ${st.permalink} ↗</a>`;
+       b.disabled=false;
+       b.textContent='Publish Again';
+       status('Reel published to Instagram: '+st.permalink);
+      }
+      await refreshSaved();
      }else if(st.status==='error'){
       clearInterval(igPollTimer);
       $('ig-upload-status-text').innerHTML=`<span style="color:#ff4ba5">Failed: ${st.error}</span>`;
@@ -398,6 +596,27 @@ async function refreshSaved(){
  const host=$('saved-grid');
  await checkYouTubeStatus();
  await checkInstagramStatus();
+
+ try {
+  const [quotas, schedData] = await Promise.all([
+   request('/publishing/quotas').catch(() => null),
+   request('/publishing/scheduled').catch(() => null)
+  ]);
+  if (quotas) {
+   if ($('yt-quota-text')) $('yt-quota-text').textContent = `${quotas.youtube.used} / ${quotas.youtube.limit} Shorts`;
+   if ($('yt-quota-reset-text')) $('yt-quota-reset-text').textContent = `Resets in ${quotas.youtube.reset_in_text} (1:30 PM IST)`;
+   if ($('yt-quota-bar')) $('yt-quota-bar').style.width = Math.min(100, quotas.youtube.percentage) + '%';
+
+   if ($('ig-quota-text')) $('ig-quota-text').textContent = `${quotas.instagram.used} / ${quotas.instagram.limit} Reels`;
+   if ($('ig-quota-bar')) $('ig-quota-bar').style.width = Math.min(100, quotas.instagram.percentage) + '%';
+  }
+  if (schedData && Array.isArray(schedData.scheduled)) {
+   renderScheduledQueue('yt', schedData.scheduled.filter(x => x.platform === 'youtube'));
+   renderScheduledQueue('ig', schedData.scheduled.filter(x => x.platform === 'instagram'));
+  }
+ } catch (e) {
+  console.warn('Quota/Schedule fetch error:', e);
+ }
  if(!host)return;
  host.replaceChildren();
  if(!res.clips?.length){

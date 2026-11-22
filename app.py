@@ -638,6 +638,9 @@ youtube_uploader.attach(app,ROOT,SAVED)
 import instagram_publisher
 instagram_publisher.attach(app,ROOT,SAVED)
 
+import publisher_scheduler
+publisher_scheduler.attach(app,ROOT,SAVED)
+
 if __name__=='__main__':
  lan=os.environ.get('NEONCLIPPING_LAN')=='1'      # phone remote: listen on the home network (PIN required, see phone.py); default is this PC only
  if lan:

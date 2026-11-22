@@ -332,28 +332,68 @@
 
     <div class="publish-integrations-row">
       <div class="yt-account-card" id="yt-account-card">
-        <div class="yt-account-info">
-          <span class="yt-logo-badge">▶</span>
-          <div class="yt-text-meta">
-            <b id="yt-status-title">YouTube Shorts Integration</b>
-            <span id="yt-status-sub" class="muted">Connect your channel to upload Shorts directly with 1-click.</span>
+        <div class="yt-card-top">
+          <div class="yt-account-info">
+            <span class="yt-logo-badge">▶</span>
+            <div class="yt-text-meta">
+              <b id="yt-status-title">YouTube Shorts Integration</b>
+              <span id="yt-status-sub" class="muted">Connect your channel to upload Shorts directly with 1-click.</span>
+            </div>
+          </div>
+          <div class="yt-account-actions">
+            <button id="yt-connect-btn" class="primary yt-btn">🔗 Connect YouTube Channel</button>
           </div>
         </div>
-        <div class="yt-account-actions">
-          <button id="yt-connect-btn" class="primary yt-btn">🔗 Connect YouTube Channel</button>
+
+        <div class="quota-monitor-row">
+          <div class="quota-stat-text">
+            <span><span class="quota-title">Daily Upload Quota:</span> <b id="yt-quota-text">0 / 6 Shorts</b></span>
+            <span class="quota-sub" id="yt-quota-reset-text">Resets 1:30 PM IST</span>
+          </div>
+          <div class="quota-progress-track"><div id="yt-quota-bar" class="quota-progress-fill" style="width:0%"></div></div>
+        </div>
+
+        <div class="scheduled-queue-section">
+          <div class="scheduled-queue-header" id="yt-queue-toggle" onclick="toggleScheduledQueue('yt')">
+            <span>📅 Scheduled Cloud Release (<b id="yt-scheduled-badge">0</b>)</span>
+            <span class="queue-chevron" id="yt-queue-chevron">▼</span>
+          </div>
+          <div id="yt-scheduled-list" class="scheduled-queue-list" hidden>
+            <div class="empty-queue-msg">No scheduled YouTube Shorts.</div>
+          </div>
         </div>
       </div>
 
       <div class="ig-account-card" id="ig-account-card">
-        <div class="ig-account-info">
-          <span class="ig-logo-badge">🟣</span>
-          <div class="ig-text-meta">
-            <b id="ig-status-title">Instagram Reels Integration</b>
-            <span id="ig-status-sub" class="muted">Connect your Instagram Creator account to publish Reels directly.</span>
+        <div class="ig-card-top">
+          <div class="ig-account-info">
+            <span class="ig-logo-badge">🟣</span>
+            <div class="ig-text-meta">
+              <b id="ig-status-title">Instagram Reels Integration</b>
+              <span id="ig-status-sub" class="muted">Connect your Instagram Creator account to publish Reels directly.</span>
+            </div>
+          </div>
+          <div class="ig-account-actions">
+            <button id="ig-connect-btn" class="primary ig-btn" onclick="openIgConnectModal()">🔗 Connect Instagram</button>
           </div>
         </div>
-        <div class="ig-account-actions">
-          <button id="ig-connect-btn" class="primary ig-btn" onclick="openIgConnectModal()">🔗 Connect Instagram</button>
+
+        <div class="quota-monitor-row">
+          <div class="quota-stat-text">
+            <span><span class="quota-title">24h Rolling Velocity:</span> <b id="ig-quota-text">0 / 50 Reels</b></span>
+            <span class="quota-sub">Rolling 24-Hour Window</span>
+          </div>
+          <div class="quota-progress-track"><div id="ig-quota-bar" class="quota-progress-fill ig" style="width:0%"></div></div>
+        </div>
+
+        <div class="scheduled-queue-section">
+          <div class="scheduled-queue-header" id="ig-queue-toggle" onclick="toggleScheduledQueue('ig')">
+            <span>📅 Scheduled Meta Cloud (<b id="ig-scheduled-badge">0</b>)</span>
+            <span class="queue-chevron" id="ig-queue-chevron">▼</span>
+          </div>
+          <div id="ig-scheduled-list" class="scheduled-queue-list" hidden>
+            <div class="empty-queue-msg">No scheduled Instagram Reels.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -444,7 +484,34 @@
       <label>Description &amp; Tags
         <textarea id="yt-desc-input" rows="3" placeholder="Description..."></textarea>
       </label>
-      <div class="controls" style="margin-top:10px">
+
+      <div class="publish-mode-selector">
+        <label class="publish-mode-label">Publishing Option:</label>
+        <div class="publish-mode-toggle-group">
+          <button type="button" class="mode-toggle-btn active" id="yt-mode-now-btn" onclick="setYtPublishMode('now')">🚀 Publish Immediately</button>
+          <button type="button" class="mode-toggle-btn" id="yt-mode-schedule-btn" onclick="setYtPublishMode('schedule')">📅 Schedule Cloud Release</button>
+        </div>
+      </div>
+
+      <div id="yt-schedule-container" class="schedule-config-box" hidden>
+        <div class="schedule-cloud-notice">
+          <span>☁ <b>YouTube Cloud Native</b>: Video uploads right now to YouTube's cloud. YouTube releases it publicly at your scheduled time even when your PC is completely turned off!</span>
+        </div>
+        <div class="schedule-time-picker-row">
+          <label class="schedule-time-label">Release Date &amp; Time:
+            <input type="datetime-local" id="yt-schedule-datetime" class="schedule-datetime-input">
+          </label>
+        </div>
+        <div class="schedule-presets-row">
+          <span class="presets-label">Quick Presets:</span>
+          <button type="button" class="preset-pill" onclick="applySchedulePreset('yt', 2)">+2 Hours</button>
+          <button type="button" class="preset-pill" onclick="applySchedulePreset('yt', 'tonight')">Tonight 8:00 PM</button>
+          <button type="button" class="preset-pill" onclick="applySchedulePreset('yt', 'tomorrow_morning')">Tomorrow 10:00 AM</button>
+          <button type="button" class="preset-pill" onclick="applySchedulePreset('yt', 'tomorrow_evening')">Tomorrow 6:00 PM</button>
+        </div>
+      </div>
+
+      <div class="controls" style="margin-top:10px" id="yt-privacy-control-box">
         <label>Privacy
           <select id="yt-privacy-select">
             <option value="public" selected>Public (Live immediately)</option>
@@ -512,6 +579,33 @@
       <label>Reel Caption (with hashtags)
         <textarea id="ig-caption-input" rows="4" placeholder="Write caption with hashtags #reels #gaming..."></textarea>
       </label>
+
+      <div class="publish-mode-selector">
+        <label class="publish-mode-label">Publishing Option:</label>
+        <div class="publish-mode-toggle-group">
+          <button type="button" class="mode-toggle-btn active" id="ig-mode-now-btn" onclick="setIgPublishMode('now')">🟣 Publish Immediately</button>
+          <button type="button" class="mode-toggle-btn" id="ig-mode-schedule-btn" onclick="setIgPublishMode('schedule')">📅 Schedule Reel</button>
+        </div>
+      </div>
+
+      <div id="ig-schedule-container" class="schedule-config-box" hidden>
+        <div class="schedule-cloud-notice ig-notice">
+          <span>☁ <b>Meta Cloud Pre-Staging</b>: Video will be uploaded and verified on Meta Cloud now (~30s). When the scheduled time arrives, it goes live automatically with zero video re-upload!</span>
+        </div>
+        <div class="schedule-time-picker-row">
+          <label class="schedule-time-label">Publish Date &amp; Time:
+            <input type="datetime-local" id="ig-schedule-datetime" class="schedule-datetime-input">
+          </label>
+        </div>
+        <div class="schedule-presets-row">
+          <span class="presets-label">Quick Presets:</span>
+          <button type="button" class="preset-pill" onclick="applySchedulePreset('ig', 2)">+2 Hours</button>
+          <button type="button" class="preset-pill" onclick="applySchedulePreset('ig', 'tonight')">Tonight 8:00 PM</button>
+          <button type="button" class="preset-pill" onclick="applySchedulePreset('ig', 'tomorrow_morning')">Tomorrow 10:00 AM</button>
+          <button type="button" class="preset-pill" onclick="applySchedulePreset('ig', 'tomorrow_evening')">Tomorrow 6:00 PM</button>
+        </div>
+      </div>
+
       <div class="controls" style="margin-top:10px">
         <label class="toggle" style="gap:8px;font-size:12px;cursor:pointer">
           <input id="ig-share-feed-checkbox" type="checkbox" checked>
@@ -543,7 +637,7 @@
   <footer>NEONCLIPPING STUDIO 2.0 <span>Autonomous Video Intelligence &amp; Multi-Platform Distribution</span></footer>
 </main>
 
-<script src="/assets/app.js?v=20261122-stable"></script>
-<script src="/assets/extras.js?v=20261122-stable"></script>
-<script src="/assets/vision.js?v=20261122-stable"></script>
+<script src="/assets/app.js?v=20261122-v2"></script>
+<script src="/assets/extras.js?v=20261122-v2"></script>
+<script src="/assets/vision.js?v=20261122-v2"></script>
 </body></html>
