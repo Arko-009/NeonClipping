@@ -287,8 +287,11 @@ function renderScheduledQueue(platform, items) {
  for (const item of items) {
   const card = document.createElement('div'); card.className = 'scheduled-item-card';
   const left = document.createElement('div'); left.className = 'scheduled-item-left';
-  const timeStr = item.scheduled_time_str || (item.scheduled_at ? new Date(item.scheduled_at * 1000).toLocaleString() : '');
-  left.innerHTML = `<span class="scheduled-item-title" title="${item.title}">${item.title}</span><span class="scheduled-item-time">⏰ Release: ${timeStr}</span>`;
+  const isErr = item.status === 'error';
+  const statusHtml = isErr 
+    ? `<span class="scheduled-item-time" style="color:#ff4ba5;font-weight:600">⚠️ Meta Blocked: ${item.error ? (item.error.includes('OAuthException') ? 'API access blocked (Need fresh token)' : item.error.slice(0, 45)) : 'Publish failed'}</span>` 
+    : `<span class="scheduled-item-time">⏰ Release: ${timeStr}</span>`;
+  left.innerHTML = `<span class="scheduled-item-title" title="${item.title}">${item.title}</span>${statusHtml}`;
   const right = document.createElement('div'); right.className = 'scheduled-item-right';
   const cancelBtn = document.createElement('button'); cancelBtn.className = 'scheduled-cancel-btn'; cancelBtn.textContent = 'Cancel';
   cancelBtn.onclick = () => cancelScheduledPost(item.id);

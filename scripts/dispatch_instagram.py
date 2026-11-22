@@ -120,13 +120,18 @@ def main():
         # 1. Process any due clips immediately
         due_items = [x for x in queue if x.get("scheduled_at", 0) <= now]
         if due_items:
+            successful_cids = set()
             for item in due_items:
                 cid = item.get("container_id")
                 if cid:
-                    publish_container(cid, ig_user_id, token, item)
-            due_cids = {x.get("container_id") for x in due_items}
-            queue = [x for x in queue if x.get("container_id") not in due_cids]
-            save_and_push_queue(queue, f"auto-published {len(due_items)} Reel(s) [skip ci]")
+                    ok = publish_container(cid, ig_user_id, token, item)
+                    if ok:
+                        successful_cids.add(cid)
+                    else:
+                        print(f"[Dispatcher] ⚠️ Failed to publish container {cid}. Keeping in queue for retry.")
+            if successful_cids:
+                queue = [x for x in queue if x.get("container_id") not in successful_cids]
+                save_and_push_queue(queue, f"auto-published {len(successful_cids)} Reel(s) [skip ci]")
 
         if not queue:
             print("[Dispatcher] 🎉 All clips published! Queue empty. Exiting.")
