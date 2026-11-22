@@ -69,7 +69,7 @@ def build_prompt(title, i, n, a, b, body, per_part=3, min_len=30, max_len=60, ga
         f'crashes, chases, explosions, police, surprises and clear jokes or reveals{(". " + game_hint) if game_hint else "."} '
         f'Use only times that appear in the transcript. Never invent times.\n\n'
         f'Reply with ONLY a JSON array and nothing else:\n'
-        f'[{{"start":"HH:MM:SS","end":"HH:MM:SS","title":"short title","hook":"the first 8 words viewers will see"}}]\n'
+        f'[{{"start":"HH:MM:SS","end":"HH:MM:SS","title":"punchy Gen-Z meme title max 7 words","hook":"the first 8 words viewers will see"}}]\n'
         f'If this part has nothing good, reply [].\n\n'
         f'TRANSCRIPT:\n{body}\n')
 
