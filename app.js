@@ -287,6 +287,7 @@ function renderScheduledQueue(platform, items) {
  for (const item of items) {
   const card = document.createElement('div'); card.className = 'scheduled-item-card';
   const left = document.createElement('div'); left.className = 'scheduled-item-left';
+  const timeStr = item.scheduled_time_str || (item.scheduled_at ? new Date(item.scheduled_at * 1000).toLocaleString() : '');
   const isErr = item.status === 'error';
   const statusHtml = isErr 
     ? `<span class="scheduled-item-time" style="color:#ff4ba5;font-weight:600">⚠️ Meta Blocked: ${item.error ? (item.error.includes('OAuthException') ? 'API access blocked (Need fresh token)' : item.error.slice(0, 45)) : 'Publish failed'}</span>` 
