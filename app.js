@@ -423,6 +423,131 @@ window.launchBatchSchedule = async function() {
  }
 };
 
+let currentIgBatchClips = [];
+let igBatchPollTimer = null;
+
+window.openIgBatchModal = async function() {
+ const dialog = $('ig-batch-dialog');
+ if (!dialog) return;
+ $('ig-batch-progress-box').hidden = true;
+ $('ig-batch-success-box').hidden = true;
+ const btn = $('ig-batch-submit-btn');
+ if (btn) {
+  btn.disabled = false;
+  btn.textContent = '🚀 Launch Meta Autopilot';
+  btn.onclick = launchIgBatchSchedule;
+ }
+ const gap = $('ig-batch-gap-select')?.value || 2;
+ await loadIgBatchPreview(gap);
+ dialog.showModal();
+};
+
+window.loadIgBatchPreview = async function(gapHours = 2) {
+ const list = $('ig-batch-clips-list');
+ const submitBtn = $('ig-batch-submit-btn');
+ if (!list) return;
+ list.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Loading top unposted clips...</div>';
+
+ try {
+  const res = await request(`/instagram/auto-schedule-preview?gap_hours=${gapHours}&count=10`);
+  list.replaceChildren();
+  currentIgBatchClips = res.clips || [];
+
+  if (!res.can_schedule || !res.clips?.length) {
+   const empty = document.createElement('div');
+   empty.className = 'empty-queue-msg';
+   if (res.remaining_quota === 0) {
+    empty.textContent = '24-hour velocity limit is reached (0/50 remaining). Please wait a few hours.';
+   } else {
+    empty.textContent = 'All clips in your Saved folder have already been uploaded or scheduled!';
+   }
+   list.append(empty);
+   if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'No Clips to Schedule';
+   }
+   return;
+  }
+
+  for (const c of res.clips) {
+   const row = document.createElement('div'); row.className = 'batch-clip-row';
+   const info = document.createElement('div'); info.className = 'batch-clip-info';
+   const order = document.createElement('span'); order.className = 'batch-clip-order ig'; order.textContent = c.order;
+   const meta = document.createElement('div'); meta.className = 'batch-clip-meta';
+   meta.innerHTML = `<span class="batch-clip-title" title="${c.title}">${c.title}</span><span class="batch-clip-size">${c.filename} · ${c.size_mb} MB</span>`;
+   info.append(order, meta);
+
+   const time = document.createElement('span'); time.className = 'batch-clip-time ig';
+   time.textContent = `⏰ ${c.scheduled_time_str}`;
+   row.append(info, time);
+   list.append(row);
+  }
+
+  if (submitBtn) {
+   submitBtn.disabled = false;
+   submitBtn.textContent = `🚀 Launch Meta Autopilot (${res.clips.length} Reels)`;
+  }
+ } catch (err) {
+  list.innerHTML = `<div style="color:#ff4ba5;font-size:12px;padding:8px">Error loading preview: ${err.message}</div>`;
+ }
+};
+
+window.launchIgBatchSchedule = async function() {
+ if (!currentIgBatchClips.length) return;
+ const b = $('ig-batch-submit-btn');
+ if (b) b.disabled = true;
+ $('ig-batch-progress-box').hidden = false;
+ $('ig-batch-progress-bar').style.width = '5%';
+ $('ig-batch-status-text').textContent = 'Starting batch pre-staging to Meta Cloud...';
+ $('ig-batch-success-box').hidden = true;
+
+ try {
+  const res = await request('/instagram/auto-schedule-batch', { clips: currentIgBatchClips });
+  const batchId = res.batch_id;
+  if (igBatchPollTimer) clearInterval(igBatchPollTimer);
+
+  igBatchPollTimer = setInterval(async () => {
+   try {
+    const st = await request('/instagram/batch-status/' + batchId);
+    $('ig-batch-progress-bar').style.width = Math.max(5, st.progress || 0) + '%';
+    $('ig-batch-status-text').textContent = st.message || st.status;
+
+    if (st.status === 'done') {
+     clearInterval(igBatchPollTimer);
+     $('ig-batch-progress-bar').style.width = '100%';
+     $('ig-batch-status-text').innerHTML = '🎉 <span style="color:#ff86be">All Reels Pre-Staged on Meta Cloud!</span>';
+     const succBox = $('ig-batch-success-box');
+     succBox.hidden = false;
+     succBox.innerHTML = `
+      <div style="line-height:1.6">
+        <span style="color:#ff86be;font-weight:700">☁ 100% Meta Cloud Autopilot Active!</span><br>
+        <span style="font-size:11.5px;color:#eee">All ${st.completed_clips.length} Reels are safely cached on Meta servers and scheduled at 2-hour intervals.<br>
+        <b>You can now turn off your PC completely</b> — Meta &amp; GitHub Actions will release them automatically on time!</span>
+      </div>
+     `;
+     if (b) {
+      b.disabled = false;
+      b.textContent = '✔ Batch Complete (Close)';
+      b.onclick = () => $('ig-batch-dialog').close();
+     }
+     status(`Batch of ${st.completed_clips.length} Reels pre-staged on Meta Cloud!`);
+     await refreshSaved();
+    } else if (st.status === 'error') {
+     clearInterval(igBatchPollTimer);
+     $('ig-batch-status-text').innerHTML = `<span style="color:#ff4ba5">Failed: ${st.error}</span>`;
+     if (b) b.disabled = false;
+    }
+   } catch (err) {
+    clearInterval(igBatchPollTimer);
+    if (b) b.disabled = false;
+   }
+  }, 2000);
+ } catch (err) {
+  $('ig-batch-status-text').textContent = 'Error: ' + err.message;
+  if (b) b.disabled = false;
+ }
+};
+
 function openYtUploadModal(c){
  currentYtClip=c;
  $('yt-modal-filename').textContent=c.filename;
@@ -755,6 +880,22 @@ async function refreshSaved(){
     } else {
      autoBtn.disabled = true;
      autoText.textContent = '✔ All Saved Clips Already Scheduled';
+    }
+   }
+
+   const igPreview = await request('/instagram/auto-schedule-preview').catch(() => null);
+   const igAutoBtn = $('ig-auto-schedule-btn');
+   const igAutoText = $('ig-auto-schedule-text');
+   if (igAutoBtn && igAutoText && igPreview) {
+    if (igPreview.can_schedule && igPreview.count > 0) {
+     igAutoBtn.disabled = false;
+     igAutoText.textContent = `⚡ Auto-Schedule Top ${igPreview.count} Reels (2h Gap)`;
+    } else if (igPreview.remaining_quota === 0) {
+     igAutoBtn.disabled = true;
+     igAutoText.textContent = '⏳ 24h Quota Full (50/50 used)';
+    } else {
+     igAutoBtn.disabled = true;
+     igAutoText.textContent = '✔ All Saved Clips Already Scheduled';
     }
    }
   } catch (e) {}

@@ -21,6 +21,7 @@ GRAPH_API_VERSION = "v21.0"
 GRAPH_API_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
 
 ig_tasks: Dict[str, Dict[str, Any]] = {}
+ig_batch_tasks: Dict[str, Dict[str, Any]] = {}
 
 class InstagramPublisher:
     def __init__(self, credentials_path: Optional[Path] = None):
@@ -469,6 +470,169 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
         if tunnel_url:
             instagram.stop_tunnel()
 
+def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip_plans: list):
+    task = ig_batch_tasks[batch_id]
+    task["status"] = "uploading"
+    total = len(clip_plans)
+    task["total"] = total
+    task["completed_clips"] = []
+
+    creds = instagram.get_credentials()
+    if not creds:
+        task["status"] = "error"
+        task["error"] = "Instagram not connected. Please enter your Access Token first."
+        return
+
+    token = creds["access_token"]
+    ig_user_id = creds["instagram_account_id"]
+    tunnel_url = None
+
+    try:
+        task["status"] = "connecting"
+        task["message"] = "Opening secure Cloudflare Tunnel for Meta Cloud pre-staging..."
+        task["progress"] = 10
+        tunnel_url = instagram.start_tunnel()
+
+        containers_to_poll = []
+
+        for idx, plan in enumerate(clip_plans):
+            filename = plan["filename"]
+            caption = plan.get("caption") or f"{Path(filename).stem}\n\n🔥 Created with NeonClipping #reels #gaming #gta6"
+            scheduled_at = plan["scheduled_at"]
+            scheduled_time_str = plan.get("scheduled_time_str") or time.ctime(scheduled_at)
+
+            input_path = saved_dir / filename
+            if not input_path.exists():
+                continue
+
+            task["message"] = f"Optimizing Reel {idx+1}/{total} for Instagram..."
+            final_video_path = optimize_for_reels(input_path) if input_path.exists() else input_path
+            final_filename = final_video_path.name
+
+            quoted_fn = urllib.parse.quote(final_filename)
+            video_public_url = f"{tunnel_url}/media-saved/{quoted_fn}"
+
+            task["message"] = f"Ingesting Reel {idx+1}/{total} into Meta Cloud..."
+            container_url = f"{GRAPH_API_BASE}/{ig_user_id}/media"
+            container_payload = {
+                "media_type": "REELS",
+                "video_url": video_public_url,
+                "caption": caption,
+                "share_to_feed": "true",
+                "access_token": token
+            }
+
+            res = requests.post(container_url, data=container_payload, timeout=30)
+            if res.status_code != 200:
+                err = res.json().get("error", {}).get("message", res.text)
+                task["status"] = "error"
+                task["error"] = f"Meta Container error on {filename}: {err}"
+                return
+
+            container_id = res.json().get("id")
+            containers_to_poll.append({
+                "container_id": container_id,
+                "filename": filename,
+                "caption": caption,
+                "scheduled_at": scheduled_at,
+                "scheduled_time_str": scheduled_time_str
+            })
+            task["progress"] = int(10 + ((idx + 1) / total) * 35)
+
+        task["message"] = "Waiting for Meta Cloud to verify & transcode all Reels..."
+        max_wait = 360
+        poll_start = time.time()
+        verified_containers = []
+
+        for idx, c_info in enumerate(containers_to_poll):
+            cid = c_info["container_id"]
+            transcode_finished = False
+            status_url = f"{GRAPH_API_BASE}/{cid}"
+
+            while time.time() - poll_start < max_wait:
+                status_res = requests.get(
+                    status_url,
+                    params={"fields": "status_code,status", "access_token": token},
+                    timeout=15
+                )
+                if status_res.status_code == 200:
+                    s_data = status_res.json()
+                    s_code = s_data.get("status_code", "").upper()
+                    if s_code == "FINISHED":
+                        transcode_finished = True
+                        break
+                    elif s_code in ["ERROR", "EXPIRED"]:
+                        err_msg = s_data.get("status", f"Meta processing failed ({s_code})")
+                        task["status"] = "error"
+                        task["error"] = f"Reel {c_info['filename']} failed on Meta Cloud: {err_msg}"
+                        return
+                time.sleep(3)
+
+            if not transcode_finished:
+                task["status"] = "error"
+                task["error"] = f"Meta video processing timed out for {c_info['filename']}"
+                return
+
+            verified_containers.append(c_info)
+            task["progress"] = int(45 + ((idx + 1) / total) * 45)
+
+        instagram.stop_tunnel()
+        tunnel_url = None
+
+        import publisher_scheduler
+        cloud_queue = []
+
+        for c_info in verified_containers:
+            publisher_scheduler.scheduler.add_scheduled(
+                "instagram",
+                c_info["filename"],
+                c_info["caption"],
+                c_info["scheduled_at"],
+                c_info["scheduled_time_str"],
+                {
+                    "container_id": c_info["container_id"],
+                    "ig_user_id": ig_user_id,
+                    "access_token": token
+                }
+            )
+
+            task["completed_clips"].append({
+                "filename": c_info["filename"],
+                "container_id": c_info["container_id"],
+                "scheduled_at": c_info["scheduled_at"],
+                "scheduled_time_str": c_info["scheduled_time_str"]
+            })
+
+            cloud_queue.append({
+                "container_id": c_info["container_id"],
+                "scheduled_at": c_info["scheduled_at"],
+                "scheduled_time_str": c_info["scheduled_time_str"],
+                "title": c_info["filename"]
+            })
+
+        data_dir = root_dir / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        queue_file = data_dir / "ig_cloud_queue.json"
+        try:
+            existing_queue = []
+            if queue_file.exists():
+                existing_queue = json.loads(queue_file.read_text(encoding="utf-8"))
+            existing_queue.extend(cloud_queue)
+            queue_file.write_text(json.dumps(existing_queue, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+        task["status"] = "done"
+        task["progress"] = 100
+        task["message"] = f"Successfully pre-staged and scheduled all {len(task['completed_clips'])} Reels on Meta Cloud!"
+
+    except Exception as e:
+        task["status"] = "error"
+        task["error"] = str(e)
+    finally:
+        if tunnel_url:
+            instagram.stop_tunnel()
+
 def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
     global SAVED_DIR_GLOBAL
     SAVED_DIR_GLOBAL = SAVED_DIR
@@ -533,3 +697,107 @@ def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
         if task_id not in ig_tasks:
             raise HTTPException(404, "Task not found")
         return ig_tasks[task_id]
+
+    class IgBatchScheduleReq(BaseModel):
+        clips: list
+
+    @app.get('/instagram/auto-schedule-preview')
+    def ig_auto_schedule_preview(gap_hours: float = 2.0, count: int = 10):
+        import publisher_scheduler
+        quota = publisher_scheduler.scheduler.get_instagram_quota()
+        remaining_slots = quota.get('remaining', 0)
+
+        data = publisher_scheduler.scheduler._load_data()
+        posted = set()
+        for x in data.get('history', []):
+            if x.get('platform') == 'instagram':
+                posted.add(x.get('video_filename'))
+        for x in data.get('scheduled', []):
+            if x.get('platform') == 'instagram':
+                posted.add(x.get('video_filename'))
+
+        unposted = []
+        for p in SAVED_DIR.glob('*.mp4'):
+            if p.name.startswith('_') or p.name in posted:
+                continue
+            st = p.stat()
+            stem = p.stem
+            raw_title = stem.rsplit(' - ', 1)[0] if ' - ' in stem else stem
+            unposted.append({
+                'filename': p.name,
+                'title': raw_title,
+                'size_bytes': st.st_size,
+                'created': st.st_mtime
+            })
+
+        unposted.sort(key=lambda x: x['created'], reverse=True)
+        max_to_schedule = min(remaining_slots, len(unposted), count)
+
+        planned = []
+        import datetime
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
+        start_dt = (now_dt + datetime.timedelta(hours=gap_hours)).replace(minute=0, second=0, microsecond=0)
+        if (start_dt - now_dt).total_seconds() < 3600:
+            start_dt += datetime.timedelta(hours=1)
+
+        for i in range(max_to_schedule):
+            clip = unposted[i]
+            target_dt = start_dt + datetime.timedelta(hours=i * gap_hours)
+            target_ts = target_dt.timestamp()
+            local_dt = target_dt.astimezone()
+            local_str = local_dt.strftime('%b %d, %I:%M %p')
+            size_mb = round(clip['size_bytes'] / (1024 * 1024), 1)
+
+            planned.append({
+                'order': i + 1,
+                'filename': clip['filename'],
+                'title': clip['title'],
+                'size_mb': size_mb,
+                'scheduled_at': target_ts,
+                'scheduled_time_str': local_str
+            })
+
+        return {
+            'quota': quota,
+            'can_schedule': remaining_slots > 0 and len(unposted) > 0,
+            'remaining_quota': remaining_slots,
+            'unposted_total': len(unposted),
+            'count': len(planned),
+            'clips': planned
+        }
+
+    @app.post('/instagram/auto-schedule-batch')
+    def ig_auto_schedule_batch(req: IgBatchScheduleReq):
+        if not req.clips:
+            raise HTTPException(400, "No clips provided for batch schedule")
+
+        import publisher_scheduler
+        quota = publisher_scheduler.scheduler.get_instagram_quota()
+        if quota.get('remaining', 0) < len(req.clips):
+            raise HTTPException(400, f"Quota exceeded: only {quota.get('remaining', 0)} uploads remaining in 24h")
+
+        batch_id = str(uuid.uuid4())[:8]
+        ig_batch_tasks[batch_id] = {
+            'batch_id': batch_id,
+            'status': 'starting',
+            'progress': 0,
+            'total': len(req.clips),
+            'message': 'Initializing batch Meta Cloud pre-staging...',
+            'created_at': time.time(),
+            'completed_clips': []
+        }
+
+        th = threading.Thread(
+            target=execute_ig_batch_upload,
+            args=(batch_id, ROOT_DIR, SAVED_DIR, req.clips),
+            daemon=True
+        )
+        th.start()
+        return {'ok': True, 'batch_id': batch_id}
+
+    @app.get('/instagram/batch-status/{batch_id}')
+    def ig_batch_status(batch_id: str):
+        task = ig_batch_tasks.get(batch_id)
+        if not task:
+            raise HTTPException(404, "Batch task not found")
+        return task

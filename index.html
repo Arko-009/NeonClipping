@@ -393,6 +393,13 @@
           <div class="quota-progress-track"><div id="ig-quota-bar" class="quota-progress-fill ig" style="width:0%"></div></div>
         </div>
 
+        <div class="ig-auto-pilot-box">
+          <button id="ig-auto-schedule-btn" class="ig-auto-schedule-btn" onclick="openIgBatchModal()">
+            <span class="btn-icon">⚡</span>
+            <span id="ig-auto-schedule-text">Auto-Schedule Top 10 Reels (2h Gap)</span>
+          </button>
+        </div>
+
         <div class="scheduled-queue-section">
           <div class="scheduled-queue-header" id="ig-queue-toggle" onclick="toggleScheduledQueue('ig')">
             <span>📅 Scheduled Meta Cloud (<b id="ig-scheduled-badge">0</b>)</span>
@@ -666,6 +673,41 @@
     </div>
   </dialog>
 
+  <dialog id="ig-batch-dialog" class="yt-modal batch-modal">
+    <div class="yt-modal-head">
+      <h3>⚡ 1-Click Autopilot Batch Scheduler (Instagram Reels)</h3>
+      <button class="modal-close-btn" onclick="document.getElementById('ig-batch-dialog').close()">&times;</button>
+    </div>
+    <div class="yt-modal-body">
+      <div class="schedule-cloud-notice ig-notice" style="margin-bottom:12px">
+        <span>☁ <b>100% Zero-PC Meta Cloud Pre-Staging</b>: Selected clips will be uploaded and verified on Meta Cloud right now (~2-3 mins). Once pre-staged, <b>you can shut down your PC immediately</b> — Meta will release each Reel at its scheduled 2-hour interval with zero video re-upload!</span>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;background:rgba(255,255,255,0.03);padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.08)">
+        <span style="font-size:12px;font-weight:600">Distribution Cadence:</span>
+        <select id="ig-batch-gap-select" class="schedule-datetime-input" style="width:auto;padding:4px 8px!important" onchange="loadIgBatchPreview(this.value)">
+          <option value="2" selected>2 Hours Gap (Recommended)</option>
+          <option value="3">3 Hours Gap</option>
+          <option value="4">4 Hours Gap</option>
+          <option value="1">1 Hour Gap</option>
+        </select>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Planned Reel Release Timeline:</div>
+      <div id="ig-batch-clips-list" class="batch-clips-list"></div>
+
+      <div id="ig-batch-progress-box" hidden style="margin-top:14px">
+        <div class="progress-track"><div id="ig-batch-progress-bar"></div></div>
+        <b id="ig-batch-status-text" class="status-msg" style="display:block;margin-top:6px;color:#ff86be">Pre-staging batch to Meta Cloud...</b>
+        <div id="ig-batch-success-box" class="yt-success-box" hidden></div>
+      </div>
+    </div>
+    <div class="yt-modal-actions">
+      <button id="ig-batch-cancel-btn" class="secondary" onclick="document.getElementById('ig-batch-dialog').close()">Cancel</button>
+      <button id="ig-batch-submit-btn" class="primary ig-batch-submit-btn" onclick="launchIgBatchSchedule()">🚀 Launch Meta Autopilot</button>
+    </div>
+  </dialog>
+
   <dialog id="donate-dialog">
     <b>Support NeonClipping ♥</b>
     <p>It is free and open-source. If it saves you time, a small donation helps me keep improving it.</p>
@@ -679,7 +721,7 @@
   <footer>NEONCLIPPING STUDIO 2.0 <span>Autonomous Video Intelligence &amp; Multi-Platform Distribution</span></footer>
 </main>
 
-<script src="/assets/app.js?v=20261122-v3"></script>
-<script src="/assets/extras.js?v=20261122-v3"></script>
-<script src="/assets/vision.js?v=20261122-v3"></script>
+<script src="/assets/app.js?v=20261122-v4"></script>
+<script src="/assets/extras.js?v=20261122-v4"></script>
+<script src="/assets/vision.js?v=20261122-v4"></script>
 </body></html>

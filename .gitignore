@@ -47,3 +47,14 @@ token.json
 !vision.js
 
 !mobile.html
+
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
+
+!scripts/
+!scripts/*.py
+
+!data/
+data/*
+!data/ig_cloud_queue.json
