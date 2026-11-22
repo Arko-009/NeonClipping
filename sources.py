@@ -14,6 +14,8 @@ def attach(app, DATA: Path, probe):
                 continue
             try:
                 j = json.loads(f.read_text(encoding='utf-8'))
+                if not isinstance(j, dict):
+                    continue
                 if j.get('result', {}).get('status') == 'done':
                     clip_stems.add(f.stem)
                     src_id = j.get('source') or j.get('settings', {}).get('id') or j.get('settings', {}).get('source_id')

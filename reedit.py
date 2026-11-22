@@ -34,7 +34,8 @@ def ancestors(data, file):
         for path in data.glob('*.json'):
             if path.name.endswith(('.state.json','.words.json','.request.json')):continue
             try:
-                if json.loads(path.read_text(encoding='utf-8')).get('superseded_by')==cur and path.stem not in out:
+                j = json.loads(path.read_text(encoding='utf-8'))
+                if isinstance(j, dict) and j.get('superseded_by')==cur and path.stem not in out:
                     out.append(path.stem);todo.append(path.stem)
             except (OSError,ValueError):pass
     return out

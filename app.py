@@ -51,6 +51,7 @@ def sync_existing_to_saved():
    if not mp4.exists():continue
    try:
     j=json.loads(f.read_text(encoding='utf-8'))
+    if not isinstance(j, dict): continue
     if j.get('result',{}).get('status')=='done' and not j.get('superseded_by'):
      existing=list(SAVED.glob(f"* - {f.stem[:6]}.mp4"))
      if not existing:
@@ -108,7 +109,9 @@ def library():
  for f in DATA.glob('*.json'):
   if f.name.endswith(('.state.json','.request.json','.words.json')):continue
   try:
-   j=json.loads(f.read_text());result=j.get('result',{})
+   j=json.loads(f.read_text())
+   if not isinstance(j, dict): continue
+   result=j.get('result',{})
    if result.get('status')=='done' and not j.get('superseded_by') and (DATA/(f.stem+'.mp4')).exists():
     records.append({'id':f.stem,'title':j.get('settings',{}).get('title') or 'NeonClipping clip','created':f.stat().st_mtime,'meta':result.get('meta',{}),'settings':j.get('settings',{}),'srt':bool(result.get('srt')) and (DATA/(f.stem+'.srt')).exists(),**app.reedit_metadata(f.stem,j,groups)})
   except (ValueError,OSError):pass
