@@ -353,6 +353,13 @@
           <div class="quota-progress-track"><div id="yt-quota-bar" class="quota-progress-fill" style="width:0%"></div></div>
         </div>
 
+        <div class="yt-auto-pilot-box">
+          <button id="yt-auto-schedule-btn" class="yt-auto-schedule-btn" onclick="openYtBatchModal()">
+            <span class="btn-icon">⚡</span>
+            <span id="yt-auto-schedule-text">Auto-Schedule Top 5 Shorts (2h Gap)</span>
+          </button>
+        </div>
+
         <div class="scheduled-queue-section">
           <div class="scheduled-queue-header" id="yt-queue-toggle" onclick="toggleScheduledQueue('yt')">
             <span>📅 Scheduled Cloud Release (<b id="yt-scheduled-badge">0</b>)</span>
@@ -624,6 +631,41 @@
     </div>
   </dialog>
 
+  <dialog id="yt-batch-dialog" class="yt-modal batch-modal">
+    <div class="yt-modal-head">
+      <h3>⚡ 1-Click Autopilot Batch Scheduler</h3>
+      <button class="modal-close-btn" onclick="document.getElementById('yt-batch-dialog').close()">&times;</button>
+    </div>
+    <div class="yt-modal-body">
+      <div class="schedule-cloud-notice" style="margin-bottom:12px">
+        <span>☁ <b>100% Zero-PC Cloud Automation</b>: Selected clips will upload directly to YouTube servers right now with staggered 2-hour release times. Once uploaded (~1-2 mins), <b>you can turn off your PC immediately</b> — YouTube will release them automatically!</span>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;background:rgba(255,255,255,0.03);padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.08)">
+        <span style="font-size:12px;font-weight:600">Distribution Cadence:</span>
+        <select id="yt-batch-gap-select" class="schedule-datetime-input" style="width:auto;padding:4px 8px!important" onchange="loadBatchPreview(this.value)">
+          <option value="2" selected>2 Hours Gap (Recommended)</option>
+          <option value="3">3 Hours Gap</option>
+          <option value="4">4 Hours Gap</option>
+          <option value="1">1 Hour Gap</option>
+        </select>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Planned Schedule Timeline:</div>
+      <div id="yt-batch-clips-list" class="batch-clips-list"></div>
+
+      <div id="yt-batch-progress-box" hidden style="margin-top:14px">
+        <div class="progress-track"><div id="yt-batch-progress-bar"></div></div>
+        <b id="yt-batch-status-text" class="status-msg" style="display:block;margin-top:6px;color:var(--cyan)">Uploading batch to YouTube Cloud...</b>
+        <div id="yt-batch-success-box" class="yt-success-box" hidden></div>
+      </div>
+    </div>
+    <div class="yt-modal-actions">
+      <button id="yt-batch-cancel-btn" class="secondary" onclick="document.getElementById('yt-batch-dialog').close()">Cancel</button>
+      <button id="yt-batch-submit-btn" class="primary yt-batch-submit-btn" onclick="launchBatchSchedule()">🚀 Launch Cloud Autopilot</button>
+    </div>
+  </dialog>
+
   <dialog id="donate-dialog">
     <b>Support NeonClipping ♥</b>
     <p>It is free and open-source. If it saves you time, a small donation helps me keep improving it.</p>
@@ -637,7 +679,7 @@
   <footer>NEONCLIPPING STUDIO 2.0 <span>Autonomous Video Intelligence &amp; Multi-Platform Distribution</span></footer>
 </main>
 
-<script src="/assets/app.js?v=20261122-v2"></script>
-<script src="/assets/extras.js?v=20261122-v2"></script>
-<script src="/assets/vision.js?v=20261122-v2"></script>
+<script src="/assets/app.js?v=20261122-v3"></script>
+<script src="/assets/extras.js?v=20261122-v3"></script>
+<script src="/assets/vision.js?v=20261122-v3"></script>
 </body></html>

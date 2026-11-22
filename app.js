@@ -298,6 +298,131 @@ function renderScheduledQueue(platform, items) {
  }
 }
 
+let currentBatchClips = [];
+let batchPollTimer = null;
+
+window.openYtBatchModal = async function() {
+ const dialog = $('yt-batch-dialog');
+ if (!dialog) return;
+ $('yt-batch-progress-box').hidden = true;
+ $('yt-batch-success-box').hidden = true;
+ const btn = $('yt-batch-submit-btn');
+ if (btn) {
+  btn.disabled = false;
+  btn.textContent = '🚀 Launch Cloud Autopilot';
+  btn.onclick = launchBatchSchedule;
+ }
+ const gap = $('yt-batch-gap-select')?.value || 2;
+ await loadBatchPreview(gap);
+ dialog.showModal();
+};
+
+window.loadBatchPreview = async function(gapHours = 2) {
+ const list = $('yt-batch-clips-list');
+ const submitBtn = $('yt-batch-submit-btn');
+ if (!list) return;
+ list.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Loading top unposted clips...</div>';
+
+ try {
+  const res = await request(`/youtube/auto-schedule-preview?gap_hours=${gapHours}`);
+  list.replaceChildren();
+  currentBatchClips = res.clips || [];
+
+  if (!res.can_schedule || !res.clips?.length) {
+   const empty = document.createElement('div');
+   empty.className = 'empty-queue-msg';
+   if (res.remaining_quota === 0) {
+    empty.textContent = 'Daily upload quota is full (0/6 remaining today). Quota resets at 1:30 PM IST.';
+   } else {
+    empty.textContent = 'All clips in your Saved folder have already been uploaded or scheduled!';
+   }
+   list.append(empty);
+   if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'No Clips to Schedule';
+   }
+   return;
+  }
+
+  for (const c of res.clips) {
+   const row = document.createElement('div'); row.className = 'batch-clip-row';
+   const info = document.createElement('div'); info.className = 'batch-clip-info';
+   const order = document.createElement('span'); order.className = 'batch-clip-order'; order.textContent = c.order;
+   const meta = document.createElement('div'); meta.className = 'batch-clip-meta';
+   meta.innerHTML = `<span class="batch-clip-title" title="${c.title}">${c.title}</span><span class="batch-clip-size">${c.filename} · ${c.size_mb} MB</span>`;
+   info.append(order, meta);
+
+   const time = document.createElement('span'); time.className = 'batch-clip-time';
+   time.textContent = `⏰ ${c.publish_at_local}`;
+   row.append(info, time);
+   list.append(row);
+  }
+
+  if (submitBtn) {
+   submitBtn.disabled = false;
+   submitBtn.textContent = `🚀 Launch Cloud Autopilot (${res.clips.length} Shorts)`;
+  }
+ } catch (err) {
+  list.innerHTML = `<div style="color:#ff4ba5;font-size:12px;padding:8px">Error loading preview: ${err.message}</div>`;
+ }
+};
+
+window.launchBatchSchedule = async function() {
+ if (!currentBatchClips.length) return;
+ const b = $('yt-batch-submit-btn');
+ if (b) b.disabled = true;
+ $('yt-batch-progress-box').hidden = false;
+ $('yt-batch-progress-bar').style.width = '5%';
+ $('yt-batch-status-text').textContent = 'Starting batch upload to YouTube Cloud...';
+ $('yt-batch-success-box').hidden = true;
+
+ try {
+  const res = await request('/youtube/auto-schedule-batch', { clips: currentBatchClips });
+  const batchId = res.batch_id;
+  if (batchPollTimer) clearInterval(batchPollTimer);
+
+  batchPollTimer = setInterval(async () => {
+   try {
+    const st = await request('/youtube/batch-status/' + batchId);
+    $('yt-batch-progress-bar').style.width = Math.max(5, st.progress || 0) + '%';
+    $('yt-batch-status-text').textContent = st.message || st.status;
+
+    if (st.status === 'done') {
+     clearInterval(batchPollTimer);
+     $('yt-batch-progress-bar').style.width = '100%';
+     $('yt-batch-status-text').innerHTML = '🎉 <span style="color:#58e8f7">All Shorts Uploaded &amp; Scheduled!</span>';
+     const succBox = $('yt-batch-success-box');
+     succBox.hidden = false;
+     succBox.innerHTML = `
+      <div style="line-height:1.6">
+        <span style="color:#58e8f7;font-weight:700">☁ 100% YouTube Cloud Autopilot Active!</span><br>
+        <span style="font-size:11.5px;color:#eee">All ${st.completed_clips.length} Shorts are safely stored on Google servers and scheduled at 2-hour intervals.<br>
+        <b>You can now turn off your PC completely</b> — YouTube will release them automatically on time!</span>
+      </div>
+     `;
+     if (b) {
+      b.disabled = false;
+      b.textContent = '✔ Batch Complete (Close)';
+      b.onclick = () => $('yt-batch-dialog').close();
+     }
+     status(`Batch of ${st.completed_clips.length} Shorts scheduled on YouTube Cloud!`);
+     await refreshSaved();
+    } else if (st.status === 'error') {
+     clearInterval(batchPollTimer);
+     $('yt-batch-status-text').innerHTML = `<span style="color:#ff4ba5">Failed: ${st.error}</span>`;
+     if (b) b.disabled = false;
+    }
+   } catch (err) {
+    clearInterval(batchPollTimer);
+    if (b) b.disabled = false;
+   }
+  }, 1000);
+ } catch (err) {
+  $('yt-batch-status-text').textContent = 'Error: ' + err.message;
+  if (b) b.disabled = false;
+ }
+};
+
 function openYtUploadModal(c){
  currentYtClip=c;
  $('yt-modal-filename').textContent=c.filename;
@@ -614,6 +739,25 @@ async function refreshSaved(){
    renderScheduledQueue('yt', schedData.scheduled.filter(x => x.platform === 'youtube'));
    renderScheduledQueue('ig', schedData.scheduled.filter(x => x.platform === 'instagram'));
   }
+
+  // Update Auto-Pilot Button
+  try {
+   const preview = await request('/youtube/auto-schedule-preview').catch(() => null);
+   const autoBtn = $('yt-auto-schedule-btn');
+   const autoText = $('yt-auto-schedule-text');
+   if (autoBtn && autoText && preview) {
+    if (preview.can_schedule && preview.count > 0) {
+     autoBtn.disabled = false;
+     autoText.textContent = `⚡ Auto-Schedule Top ${preview.count} Shorts (2h Gap)`;
+    } else if (preview.remaining_quota === 0) {
+     autoBtn.disabled = true;
+     autoText.textContent = '⏳ Daily Quota Full (6/6 used) · Resets 1:30 PM IST';
+    } else {
+     autoBtn.disabled = true;
+     autoText.textContent = '✔ All Saved Clips Already Scheduled';
+    }
+   }
+  } catch (e) {}
  } catch (e) {
   console.warn('Quota/Schedule fetch error:', e);
  }

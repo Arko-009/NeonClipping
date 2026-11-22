@@ -23,6 +23,7 @@ SCOPES = [
 
 upload_tasks = {}
 active_flows = {}
+batch_tasks = {}
 
 def get_credentials(root_dir: Path):
     secrets_file = root_dir / 'client_secrets.json'
@@ -177,6 +178,113 @@ def execute_upload(task_id: str, root_dir: Path, video_path: Path, title: str, d
         task['status'] = 'error'
         task['error'] = str(e)
 
+def execute_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip_plans: list):
+    task = batch_tasks[batch_id]
+    task['status'] = 'uploading'
+    total = len(clip_plans)
+    task['total'] = total
+    task['completed_clips'] = []
+
+    try:
+        creds, err = get_credentials(root_dir)
+        if not creds or not creds.valid:
+            task['status'] = 'error'
+            task['error'] = 'Not authenticated. Please connect your YouTube account first.'
+            return
+
+        service = build('youtube', 'v3', credentials=creds)
+
+        for idx, plan in enumerate(clip_plans):
+            task['current_index'] = idx + 1
+            filename = plan['filename']
+            task['current_filename'] = filename
+            publish_at = plan['publish_at']
+            video_path = saved_dir / filename
+            if not video_path.exists():
+                continue
+
+            raw_title = plan.get('title') or video_path.stem
+            if ' - ' in raw_title:
+                raw_title = raw_title.rsplit(' - ', 1)[0]
+            title = f"{raw_title} #shorts"[:100]
+
+            description = f"{raw_title}\n\nAuto-scheduled with NeonClipping #shorts #gaming #gta6"
+            tags = ["shorts", "gaming", "neonclipping", "clips", "gta6"]
+
+            status_body = {
+                'privacyStatus': 'private',
+                'publishAt': publish_at,
+                'selfDeclaredMadeForKids': False
+            }
+            body = {
+                'snippet': {
+                    'title': title,
+                    'description': description,
+                    'tags': tags,
+                    'categoryId': '20'
+                },
+                'status': status_body
+            }
+
+            media = MediaFileUpload(
+                str(video_path),
+                chunksize=1024 * 1024 * 2,
+                resumable=True,
+                mimetype='video/mp4'
+            )
+
+            req = service.videos().insert(
+                part='snippet,status',
+                body=body,
+                media_body=media
+            )
+
+            response = None
+            while response is None:
+                upload_status, response = req.next_chunk()
+                if upload_status:
+                    pct = int(upload_status.progress() * 100)
+                    overall = int(((idx + upload_status.progress()) / total) * 100)
+                    task['progress'] = overall
+                    task['message'] = f"Uploading Short {idx+1}/{total}: {pct}% ({title[:30]}...)"
+
+            video_id = response.get('id')
+            shorts_url = f"https://youtube.com/shorts/{video_id}"
+
+            import publisher_scheduler
+            import datetime
+            dt = datetime.datetime.fromisoformat(publish_at.replace('Z', '+00:00'))
+            publisher_scheduler.scheduler.log_publish(
+                "youtube", filename, title, shorts_url, status="scheduled",
+                meta={"publish_at": publish_at, "video_id": video_id}
+            )
+            publisher_scheduler.scheduler.add_scheduled(
+                "youtube", filename, title, dt.timestamp(), publish_at,
+                {"video_id": video_id, "shorts_url": shorts_url}
+            )
+
+            task['completed_clips'].append({
+                'filename': filename,
+                'title': title,
+                'shorts_url': shorts_url,
+                'publish_at': publish_at
+            })
+
+        task['status'] = 'done'
+        task['progress'] = 100
+        task['message'] = f"Successfully scheduled all {len(task['completed_clips'])} Shorts on YouTube Cloud!"
+
+    except HttpError as e:
+        task['status'] = 'error'
+        try:
+            err_details = json.loads(e.content.decode('utf-8'))
+            task['error'] = err_details.get('error', {}).get('message', str(e))
+        except Exception:
+            task['error'] = str(e)
+    except Exception as e:
+        task['status'] = 'error'
+        task['error'] = str(e)
+
 def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
     class UploadReq(BaseModel):
         filename: str
@@ -304,4 +412,110 @@ def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
         task = upload_tasks.get(task_id)
         if not task:
             raise HTTPException(404, "Upload task not found")
+        return task
+
+    class BatchScheduleReq(BaseModel):
+        clips: list
+
+    @app.get('/youtube/auto-schedule-preview')
+    def auto_schedule_preview(gap_hours: float = 2.0, count: int = 5):
+        import publisher_scheduler
+        quota = publisher_scheduler.scheduler.get_youtube_quota()
+        remaining_slots = quota.get('remaining', 0)
+
+        data = publisher_scheduler.scheduler._load_data()
+        posted = set()
+        for x in data.get('history', []):
+            if x.get('platform') == 'youtube':
+                posted.add(x.get('video_filename'))
+        for x in data.get('scheduled', []):
+            if x.get('platform') == 'youtube':
+                posted.add(x.get('video_filename'))
+
+        unposted = []
+        for p in SAVED_DIR.glob('*.mp4'):
+            if p.name.startswith('_') or p.name in posted:
+                continue
+            st = p.stat()
+            stem = p.stem
+            raw_title = stem.rsplit(' - ', 1)[0] if ' - ' in stem else stem
+            unposted.append({
+                'filename': p.name,
+                'title': raw_title,
+                'size_bytes': st.st_size,
+                'created': st.st_mtime
+            })
+
+        unposted.sort(key=lambda x: x['created'], reverse=True)
+        max_to_schedule = min(remaining_slots, len(unposted), count)
+
+        planned = []
+        import datetime
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
+        start_dt = (now_dt + datetime.timedelta(hours=gap_hours)).replace(minute=0, second=0, microsecond=0)
+        if (start_dt - now_dt).total_seconds() < 3600:
+            start_dt += datetime.timedelta(hours=1)
+
+        for i in range(max_to_schedule):
+            clip = unposted[i]
+            target_dt = start_dt + datetime.timedelta(hours=i * gap_hours)
+            target_iso = target_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            local_dt = target_dt.astimezone()
+            local_str = local_dt.strftime('%b %d, %I:%M %p')
+            size_mb = round(clip['size_bytes'] / (1024 * 1024), 1)
+
+            planned.append({
+                'order': i + 1,
+                'filename': clip['filename'],
+                'title': clip['title'],
+                'size_mb': size_mb,
+                'publish_at': target_iso,
+                'publish_at_local': local_str
+            })
+
+        return {
+            'quota': quota,
+            'can_schedule': remaining_slots > 0 and len(unposted) > 0,
+            'remaining_quota': remaining_slots,
+            'unposted_total': len(unposted),
+            'count': len(planned),
+            'clips': planned
+        }
+
+    @app.post('/youtube/auto-schedule-batch')
+    def auto_schedule_batch(req: BatchScheduleReq):
+        if not req.clips:
+            raise HTTPException(400, "No clips provided for batch schedule")
+
+        import publisher_scheduler
+        quota = publisher_scheduler.scheduler.get_youtube_quota()
+        if quota.get('remaining', 0) < len(req.clips):
+            raise HTTPException(400, f"Quota exceeded: only {quota.get('remaining', 0)} uploads remaining today")
+
+        import uuid
+        batch_id = str(uuid.uuid4())[:8]
+        batch_tasks[batch_id] = {
+            'batch_id': batch_id,
+            'status': 'starting',
+            'progress': 0,
+            'current_index': 0,
+            'total': len(req.clips),
+            'message': 'Initializing batch YouTube cloud upload...',
+            'created_at': time.time(),
+            'completed_clips': []
+        }
+
+        th = threading.Thread(
+            target=execute_batch_upload,
+            args=(batch_id, ROOT_DIR, SAVED_DIR, req.clips),
+            daemon=True
+        )
+        th.start()
+        return {'ok': True, 'batch_id': batch_id}
+
+    @app.get('/youtube/batch-status/{batch_id}')
+    def batch_status(batch_id: str):
+        task = batch_tasks.get(batch_id)
+        if not task:
+            raise HTTPException(404, "Batch task not found")
         return task
