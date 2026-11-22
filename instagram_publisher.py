@@ -296,6 +296,99 @@ def optimize_for_reels(input_path: Path) -> Path:
     logger.info(f"Normalized Reels video created: {output_path.name} ({output_path.stat().st_size} bytes)")
     return output_path
 
+def extract_clip_transcript(filename: str, saved_dir: Path, data_dir: Path) -> str:
+    """Extracts spoken transcript from .srt files in Saved/ or data/ directories."""
+    p = saved_dir / filename
+    stem = p.stem
+    srt1 = saved_dir / f"{stem}.srt"
+    if srt1.exists():
+        try:
+            lines = [l.strip() for l in srt1.read_text(encoding='utf-8', errors='ignore').splitlines() if l.strip() and not l.strip().isdigit() and '-->' not in l]
+            return " ".join(lines)
+        except Exception:
+            pass
+    if ' - ' in stem:
+        short_id = stem.rsplit(' - ', 1)[1]
+        matches = list(data_dir.glob(f"{short_id}*.srt"))
+        if matches:
+            try:
+                lines = [l.strip() for l in matches[0].read_text(encoding='utf-8', errors='ignore').splitlines() if l.strip() and not l.strip().isdigit() and '-->' not in l]
+                return " ".join(lines)
+            except Exception:
+                pass
+    return ""
+
+def generate_viral_caption(title: str, transcript: str = "") -> dict:
+    """
+    Generates a viral, Gen-Z meme style Instagram Reels caption with precision hashtags using local Ollama.
+    Includes robust fallback if Ollama is busy or offline.
+    """
+    clean_title = title or "Epic Moment"
+    snippet = transcript[:1500] if transcript else clean_title
+
+    prompt = f"""You are an expert Instagram Reels creator who writes viral Gen-Z meme-style captions that blow up on Explore and Reels.
+Given the clip title and transcript below, write a short, funny, relatable caption for Instagram Reels.
+
+Clip Title: {clean_title}
+Transcript: "{snippet}"
+
+Follow this exact structure:
+Line 1: A punchy, hilarious Gen-Z meme hook with emojis (e.g. using "Bro really thought...", "Tell me why...", "He was NOT ready for...", with emojis like 💀, 😭, 🤣).
+Line 2: A short relatable line or comment-bait question (e.g. "Bro really risked it all 😭", "Who else would do this? Tag them below 👇", "Nah he actually went there 💀").
+Line 3: 4 to 6 hyper-targeted hashtags matching the actual theme (mix of gaming, funny meme, and creator hashtags; NO generic #viral or #trending).
+
+Reply ONLY with JSON:
+{{
+  "hook": "...",
+  "comment_bait": "...",
+  "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"]
+}}"""
+
+    try:
+        req = urllib.request.Request(
+            'http://127.0.0.1:11434/api/generate',
+            data=json.dumps({
+                'model': 'llama3.2:3b',
+                'prompt': prompt,
+                'format': 'json',
+                'stream': False,
+                'options': {'temperature': 0.7}
+            }).encode('utf-8'),
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=14) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            res = json.loads(data.get('response', '{}'))
+            hook = res.get('hook', '').strip()
+            comment_bait = res.get('comment_bait', '').strip()
+            tags = res.get('hashtags', [])
+            if isinstance(tags, list):
+                hashtags_str = " ".join([t if t.startswith('#') else f"#{t}" for t in tags[:6]])
+            else:
+                hashtags_str = "#gamingmemes #funnyclips #reelsindia #gamerlife"
+            
+            if hook:
+                full_caption = f"{hook}\n\n{comment_bait}\n\n{hashtags_str}\n\n🔥 Created with NeonClipping Studio".strip()
+                return {
+                    'ok': True,
+                    'caption': full_caption,
+                    'hook': hook,
+                    'comment_bait': comment_bait,
+                    'hashtags': hashtags_str
+                }
+    except Exception as e:
+        logger.warning(f"Ollama viral caption generation fallback: {e}")
+
+    # Fallback template (100% resilient)
+    fallback_caption = f"Bro really thought this was a good idea 💀😭\n\nTag someone who needs to see this! 👇\n\n#gamingmemes #funnyreels #streamerclips #gaminglife #reelsindia\n\n🔥 Created with NeonClipping Studio"
+    return {
+        'ok': True,
+        'caption': fallback_caption,
+        'hook': "Bro really thought this was a good idea 💀😭",
+        'comment_bait': "Tag someone who needs to see this! 👇",
+        'hashtags': "#gamingmemes #funnyreels #streamerclips #gaminglife #reelsindia"
+    }
+
 def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to_feed: bool, saved_dir: Optional[Path] = None, scheduled_at: Optional[float] = None, scheduled_time_str: Optional[str] = None):
     task = ig_tasks.get(task_id)
     if not task:
@@ -497,7 +590,14 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
 
         for idx, plan in enumerate(clip_plans):
             filename = plan["filename"]
-            caption = plan.get("caption") or f"{Path(filename).stem}\n\n🔥 Created with NeonClipping #reels #gaming #gta6"
+            raw_title = plan.get("title") or Path(filename).stem
+            if ' - ' in raw_title:
+                raw_title = raw_title.rsplit(' - ', 1)[0]
+            if plan.get("caption"):
+                caption = plan["caption"]
+            else:
+                t_text = extract_clip_transcript(filename, saved_dir, root_dir / "data")
+                caption = generate_viral_caption(raw_title, t_text)["caption"]
             scheduled_at = plan["scheduled_at"]
             scheduled_time_str = plan.get("scheduled_time_str") or time.ctime(scheduled_at)
 
@@ -607,7 +707,7 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
                 "container_id": c_info["container_id"],
                 "scheduled_at": c_info["scheduled_at"],
                 "scheduled_time_str": c_info["scheduled_time_str"],
-                "title": c_info["filename"]
+                "title": c_info.get("caption", "").splitlines()[0] if c_info.get("caption") else c_info["filename"]
             })
 
         data_dir = root_dir / "data"
@@ -734,6 +834,18 @@ def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
         if task_id not in ig_tasks:
             raise HTTPException(404, "Task not found")
         return ig_tasks[task_id]
+
+    class GenerateCaptionReq(BaseModel):
+        filename: str
+        title: Optional[str] = None
+
+    @app.post('/instagram/generate-caption')
+    def ig_generate_caption(req: GenerateCaptionReq):
+        t_text = extract_clip_transcript(req.filename, SAVED_DIR, ROOT_DIR / "data")
+        clean_title = req.title or Path(req.filename).stem
+        if ' - ' in clean_title:
+            clean_title = clean_title.rsplit(' - ', 1)[0]
+        return generate_viral_caption(clean_title, t_text)
 
     class IgBatchScheduleReq(BaseModel):
         clips: list

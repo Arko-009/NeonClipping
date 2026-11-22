@@ -739,16 +739,46 @@ if($('ig-disconnect-btn')){
  };
 }
 
+window.regenerateModalCaption = async function() {
+ if (!currentIgClip) return;
+ const btn = $('ig-ai-caption-btn');
+ if (btn) {
+  btn.disabled = true;
+  btn.textContent = '✨ Generating...';
+ }
+ const rawTitle = (currentIgClip.title || currentIgClip.stem || '').replace(/ - [a-f0-9]+$/i, '');
+ try {
+  const res = await request('/instagram/generate-caption', {
+   filename: currentIgClip.filename,
+   title: rawTitle
+  });
+  if (res && res.caption) {
+   $('ig-caption-input').value = res.caption;
+  }
+ } catch (e) {
+  console.warn('AI caption polish failed, kept fallback:', e);
+ } finally {
+  if (btn) {
+   btn.disabled = false;
+   btn.textContent = '✨ AI Gen-Z Polish';
+  }
+ }
+};
+
 function openIgUploadModal(c){
  currentIgClip=c;
  $('ig-modal-filename').textContent=c.filename;
- $('ig-caption-input').value=`${c.title||c.stem}\n\n🔥 Created with NeonClipping Studio\n#reels #gaming #gta6 #viral #trending`;
+ const rawTitle = (c.title || c.stem || '').replace(/ - [a-f0-9]+$/i, '');
+ $('ig-caption-input').value=`${rawTitle}\n\n🔥 Created with NeonClipping Studio\n#gamingmemes #funnyreels #gamerlife`;
  $('ig-share-feed-checkbox').checked=true;
  $('ig-upload-progress-box').hidden=true;
  $('ig-upload-success-link').hidden=true;
  $('ig-submit-upload-btn').disabled=false;
  setIgPublishMode('now');
  $('ig-upload-dialog').showModal();
+
+ // Asynchronously fetch viral Gen-Z caption
+ regenerateModalCaption();
 }
 
 if($('ig-submit-upload-btn')){
