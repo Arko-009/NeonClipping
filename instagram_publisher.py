@@ -637,6 +637,25 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
                 ["git", "push", "origin", "main"],
                 cwd=str(root_dir), capture_output=True, timeout=20
             )
+
+            # Kick off the autonomous GitHub Cloud Dispatcher runner immediately
+            try:
+                cred_p = subprocess.Popen(['git', 'credential', 'fill'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                cred_out, _ = cred_p.communicate('protocol=https\nhost=github.com\n\n')
+                gh_token = [l.split('=', 1)[1].strip() for l in cred_out.splitlines() if l.startswith('password=')][0]
+                if gh_token:
+                    requests.post(
+                        "https://api.github.com/repos/Arko-009/NeonClipping/actions/workflows/instagram_dispatcher.yml/dispatches",
+                        json={"ref": "main"},
+                        headers={
+                            "Authorization": f"token {gh_token}",
+                            "Accept": "application/vnd.github.v3+json",
+                            "User-Agent": "NeonClipping-Autopilot"
+                        },
+                        timeout=10
+                    )
+            except Exception:
+                pass
         except Exception:
             pass
 

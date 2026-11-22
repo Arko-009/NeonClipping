@@ -1,13 +1,16 @@
 name: Instagram Cloud Reels Dispatcher
 
 on:
-  schedule:
-    # Runs every 15 minutes to guarantee timely dispatch with zero server load delay
-    - cron: '*/15 * * * *'
   workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
 
 permissions:
   contents: write
+
+concurrency:
+  group: instagram-dispatcher
+  cancel-in-progress: false
 
 jobs:
   dispatch:
@@ -18,6 +21,11 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Configure Git
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action Dispatcher"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -27,20 +35,11 @@ jobs:
         run: |
           pip install requests
 
-      - name: Dispatch Due Instagram Reels
+      - name: Run Cloud Dispatcher Daemon
         env:
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/dispatch_instagram.py
-
-      - name: Commit Updated Queue
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action Dispatcher"
-          if [[ -n $(git status --porcelain data/ig_cloud_queue.json) ]]; then
-            git add data/ig_cloud_queue.json
-            git commit -m "chore(instagram): auto-published due Reel [skip ci]"
-            git push
-          fi
-

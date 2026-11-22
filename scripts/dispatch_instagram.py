@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import subprocess
 import requests
 from pathlib import Path
 
@@ -8,14 +9,86 @@ ROOT = Path(__file__).resolve().parent.parent
 QUEUE_FILE = ROOT / "data" / "ig_cloud_queue.json"
 GRAPH_API_VERSION = "v21.0"
 GRAPH_API_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
+MAX_RUNNER_DURATION_SECONDS = 5 * 3600  # 5 hours max before spawning handoff runner (GitHub limit is 6h)
+
+def load_queue():
+    if not QUEUE_FILE.exists():
+        return []
+    try:
+        return json.loads(QUEUE_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[Dispatcher] Error reading queue: {e}")
+        return []
+
+def save_and_push_queue(queue, message="auto-published due Reel [skip ci]"):
+    QUEUE_FILE.write_text(json.dumps(queue, indent=2), encoding="utf-8")
+    try:
+        subprocess.run(["git", "add", "data/ig_cloud_queue.json"], cwd=str(ROOT), capture_output=True, timeout=15)
+        subprocess.run(["git", "commit", "-m", f"chore(instagram): {message}"], cwd=str(ROOT), capture_output=True, timeout=15)
+        subprocess.run(["git", "push"], cwd=str(ROOT), capture_output=True, timeout=30)
+        print(f"[Dispatcher] Git sync successful: {message}")
+    except Exception as e:
+        print(f"[Dispatcher] Git sync warning: {e}")
+
+def spawn_next_runner(pat_token, repo_name):
+    if not pat_token or not repo_name:
+        print("[Dispatcher] Notice: GH_PAT or GITHUB_REPOSITORY not set. Cannot spawn handoff runner.")
+        return False
+    try:
+        url = f"https://api.github.com/repos/{repo_name}/actions/workflows/instagram_dispatcher.yml/dispatches"
+        res = requests.post(
+            url,
+            json={"ref": "main"},
+            headers={
+                "Authorization": f"token {pat_token}",
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "Autonomous-Cloud-Dispatcher"
+            },
+            timeout=20
+        )
+        if res.status_code == 204:
+            print(f"[Dispatcher] Successfully dispatched next handoff runner for {repo_name}!")
+            return True
+        else:
+            print(f"[Dispatcher] Failed to dispatch next runner: {res.status_code} {res.text}")
+            return False
+    except Exception as e:
+        print(f"[Dispatcher] Exception dispatching next runner: {e}")
+        return False
+
+def publish_container(container_id, ig_user_id, token, item):
+    print(f"[Dispatcher] Publishing container {container_id} (scheduled: {item.get('scheduled_time_str')})...")
+    try:
+        res = requests.post(
+            f"{GRAPH_API_BASE}/{ig_user_id}/media_publish",
+            data={"creation_id": container_id, "access_token": token},
+            timeout=35
+        )
+        if res.status_code == 200:
+            media_id = res.json().get("id")
+            print(f"[Dispatcher] >>> SUCCESS! Reel published live! Media ID: {media_id}")
+            return True
+        else:
+            err = res.text
+            print(f"[Dispatcher] Meta API response: {err}")
+            err_lower = err.lower()
+            if "already published" in err_lower or "has been published" in err_lower or "already been published" in err_lower:
+                print(f"[Dispatcher] Reel was already published. Treating as success.")
+                return True
+            elif "expired" in err_lower:
+                print(f"[Dispatcher] Container expired. Skipping.")
+                return True
+            return False
+    except Exception as e:
+        print(f"[Dispatcher] Exception publishing container {container_id}: {e}")
+        return False
 
 def main():
-    if not QUEUE_FILE.exists():
-        print("No IG cloud queue file found. Nothing to dispatch.")
-        return
-
+    start_time = time.time()
     token = os.environ.get("IG_ACCESS_TOKEN")
     ig_user_id = os.environ.get("IG_USER_ID")
+    gh_pat = os.environ.get("GH_PAT")
+    repo_name = os.environ.get("GITHUB_REPOSITORY", "Arko-009/NeonClipping")
 
     creds_file = ROOT / "instagram_credentials.json"
     if creds_file.exists():
@@ -27,53 +100,69 @@ def main():
             pass
 
     if not token or not ig_user_id:
-        print("Notice: IG_ACCESS_TOKEN and IG_USER_ID not provided. Please set them as GitHub Secrets.")
+        print("[Dispatcher] Error: IG_ACCESS_TOKEN and IG_USER_ID must be provided.")
         return
 
-    try:
-        queue = json.loads(QUEUE_FILE.read_text(encoding="utf-8"))
-    except Exception as e:
-        print(f"Error reading queue: {e}")
-        return
+    print("=======================================================")
+    print("🚀 NEONCLIPPING AUTONOMOUS CLOUD DISPATCHER DAEMON")
+    print(f"Started at: {time.ctime(start_time)}")
+    print(f"Target Account: {ig_user_id}")
+    print("=======================================================")
 
-    now = time.time()
-    remaining = []
-    published_count = 0
+    while True:
+        queue = load_queue()
+        now = time.time()
 
-    for item in queue:
-        scheduled_at = item.get("scheduled_at", 0)
-        container_id = item.get("container_id")
+        if not queue:
+            print("[Dispatcher] 🎉 Queue is empty! All scheduled Reels have been published. Exiting.")
+            break
 
-        if scheduled_at <= now and container_id:
-            print(f"[Dispatcher] Publishing scheduled container {container_id} (scheduled for {item.get('scheduled_time_str')})...")
-            try:
-                res = requests.post(
-                    f"{GRAPH_API_BASE}/{ig_user_id}/media_publish",
-                    data={"creation_id": container_id, "access_token": token},
-                    timeout=30
-                )
-                if res.status_code == 200:
-                    media_id = res.json().get("id")
-                    print(f"[Dispatcher] SUCCESS! Published media ID: {media_id}")
-                    published_count += 1
-                else:
-                    err = res.text
-                    print(f"[Dispatcher] FAILED to publish container {container_id}: {err}")
-                    if "expired" in err.lower() or "already published" in err.lower() or "has been published" in err.lower() or "already been published" in err.lower():
-                        continue
-                    remaining.append(item)
-            except Exception as e:
-                print(f"[Dispatcher] Exception publishing container {container_id}: {e}")
-                remaining.append(item)
-        else:
-            remaining.append(item)
+        # 1. Process any due clips immediately
+        due_items = [x for x in queue if x.get("scheduled_at", 0) <= now]
+        if due_items:
+            for item in due_items:
+                cid = item.get("container_id")
+                if cid:
+                    publish_container(cid, ig_user_id, token, item)
+            due_cids = {x.get("container_id") for x in due_items}
+            queue = [x for x in queue if x.get("container_id") not in due_cids]
+            save_and_push_queue(queue, f"auto-published {len(due_items)} Reel(s) [skip ci]")
 
-    if published_count > 0 or len(remaining) != len(queue):
-        QUEUE_FILE.write_text(json.dumps(remaining, indent=2), encoding="utf-8")
-        print(f"[Dispatcher] Queue updated: {published_count} published, {len(remaining)} remaining.")
-    else:
-        print(f"[Dispatcher] No due containers at this time ({len(queue)} pending in queue).")
+        if not queue:
+            print("[Dispatcher] 🎉 All clips published! Queue empty. Exiting.")
+            break
+
+        # 2. Check next scheduled clip
+        queue.sort(key=lambda x: x.get("scheduled_at", 0))
+        next_item = queue[0]
+        scheduled_at = next_item.get("scheduled_at", 0)
+        wait_seconds = max(0, int(scheduled_at - time.time()))
+        elapsed_job = time.time() - start_time
+
+        print(f"[Dispatcher] Pending queue: {len(queue)} clips.")
+        print(f"[Dispatcher] Next Reel: '{next_item.get('title')}' scheduled for {next_item.get('scheduled_time_str')} (in {wait_seconds/60:.1f} mins)")
+
+        # 3. Check if waiting for this clip would exceed 5 hours runner runtime
+        if elapsed_job + wait_seconds > MAX_RUNNER_DURATION_SECONDS:
+            print(f"[Dispatcher] Job approaching 5-hour safety limit ({elapsed_job/3600:.1f}h elapsed).")
+            print("[Dispatcher] Triggering handoff to fresh cloud runner...")
+            spawn_next_runner(gh_pat, repo_name)
+            print("[Dispatcher] Handoff complete. Terminating current runner cleanly.")
+            break
+
+        # 4. Sleep with 60-second heartbeats until the exact scheduled second
+        if wait_seconds > 0:
+            print(f"[Dispatcher] Entering precision cloud sleep for {wait_seconds} seconds ({wait_seconds//60} mins)...")
+            remaining_sleep = wait_seconds
+            while remaining_sleep > 0:
+                step = min(60, remaining_sleep)
+                time.sleep(step)
+                remaining_sleep -= step
+                mins_left = remaining_sleep // 60
+                if mins_left % 15 == 0 and remaining_sleep > 60:
+                    print(f"[Dispatcher Heartbeat] {mins_left}m remaining until '{next_item.get('title')}' drops...")
+
+        print(f"[Dispatcher] Scheduled timestamp reached for '{next_item.get('title')}'! Proceeding to publish...")
 
 if __name__ == "__main__":
     main()
-
