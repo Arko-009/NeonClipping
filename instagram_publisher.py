@@ -540,14 +540,14 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
             task["progress"] = int(10 + ((idx + 1) / total) * 35)
 
         task["message"] = "Waiting for Meta Cloud to verify & transcode all Reels..."
-        max_wait = 360
-        poll_start = time.time()
         verified_containers = []
 
         for idx, c_info in enumerate(containers_to_poll):
             cid = c_info["container_id"]
             transcode_finished = False
             status_url = f"{GRAPH_API_BASE}/{cid}"
+            poll_start = time.time()
+            max_wait = 180
 
             while time.time() - poll_start < max_wait:
                 status_res = requests.get(
@@ -619,6 +619,20 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
                 existing_queue = json.loads(queue_file.read_text(encoding="utf-8"))
             existing_queue.extend(cloud_queue)
             queue_file.write_text(json.dumps(existing_queue, indent=2), encoding="utf-8")
+
+            # Push cloud queue to GitHub for zero-PC offline dispatching
+            subprocess.run(
+                ["git", "add", "data/ig_cloud_queue.json"],
+                cwd=str(root_dir), capture_output=True, timeout=10
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "chore(instagram): sync scheduled cloud queue [skip ci]"],
+                cwd=str(root_dir), capture_output=True, timeout=10
+            )
+            subprocess.run(
+                ["git", "push", "origin", "main"],
+                cwd=str(root_dir), capture_output=True, timeout=20
+            )
         except Exception:
             pass
 
