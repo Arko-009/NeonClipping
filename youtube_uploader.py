@@ -12,9 +12,15 @@ from googleapiclient.errors import HttpError
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-os.environ['HTTP_PROXY'] = 'http://127.0.0.1:18888'
-os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:18888'
-os.environ['NO_PROXY'] = '127.0.0.1,localhost'
+try:
+    import socket
+    with socket.create_connection(('127.0.0.1', 18888), timeout=0.3):
+        os.environ['HTTP_PROXY'] = 'http://127.0.0.1:18888'
+        os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:18888'
+        os.environ['NO_PROXY'] = '127.0.0.1,localhost'
+except Exception:
+    for _k in ('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy'):
+        os.environ.pop(_k, None)
 
 SCOPES = [
     'https://www.googleapis.com/auth/youtube.upload',
