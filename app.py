@@ -94,8 +94,13 @@ def media(id:str):
  return FileResponse(p,media_type='video/mp4')
 @app.get('/assets/{name}')
 def assets(name:str):
- if name not in ('app.js','style.css','extras.js','transcripts.js','vision.js'):raise HTTPException(404)
+ if name not in ('app.js','style.css','extras.js','transcripts.js','vision.js','NeonClip.png','NeonClip.ico'):raise HTTPException(404)
  return FileResponse(ROOT/name,headers={'Cache-Control':'no-cache, no-store, must-revalidate','Pragma':'no-cache','Expires':'0'})
+@app.get('/favicon.ico')
+def favicon():
+ icon = ROOT / 'NeonClip.ico'
+ if icon.exists(): return FileResponse(icon)
+ return FileResponse(ROOT / 'NeonClip.png')
 @app.get('/text/{id}/{kind}')
 def text_file(id:str,kind:str):
  if not id.isalnum() or kind not in ('srt','ass','vtt'):raise HTTPException(404)

@@ -47,6 +47,10 @@ token.json
 !vision.js
 
 !mobile.html
+!NeonClip.png
+!NeonClip.ico
+!launch.bat
+!create_shortcut.ps1
 
 !.github/
 !.github/workflows/

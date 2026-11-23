@@ -172,7 +172,9 @@ details.panel>summary{cursor:pointer;list-style:none;font-size:16px}details.pane
 .app-top-nav{position:fixed;top:0;left:0;right:0;height:54px;background:#0d0915;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid #2d213d;display:flex;align-items:center;justify-content:space-between;padding:0 24px;z-index:999;box-shadow:0 4px 25px rgba(0,0,0,.55)}
 .app-top-nav::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,var(--pink),var(--cyan) 50%,var(--lime) 100%);opacity:.9}
 .top-nav-left{display:flex;align-items:center;gap:18px}
-.top-nav-brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+.top-nav-brand{display:flex;align-items:center;gap:12px;text-decoration:none}
+.top-brand-logo{height:36px;width:auto;max-width:120px;object-fit:contain;filter:drop-shadow(0 0 10px rgba(255,75,165,.55));border-radius:4px;transition:transform .2s ease}
+.top-nav-brand:hover .top-brand-logo{transform:scale(1.05)}
 .top-brand-icon{font:800 24px 'Barlow Condensed',Impact,sans-serif;color:var(--pink);text-shadow:0 0 15px rgba(255,75,165,.6);line-height:1}
 .top-brand-info{display:flex;align-items:center;gap:8px}
 .top-brand-name{font:800 20px/1 'Barlow Condensed',Impact,sans-serif;letter-spacing:1.5px;color:#fff}
