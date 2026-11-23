@@ -81,19 +81,46 @@ class PublisherScheduler:
         now = time.time()
         window_24h = now - 86400
         data = self._load_data()
-        count = 0
+        timestamps = []
         for item in data.get("history", []):
             if item.get("platform") == "instagram" and item.get("status") == "published":
-                if item.get("published_at", 0) >= window_24h or item.get("created_at", 0) >= window_24h:
-                    count += 1
+                t = item.get("published_at") or item.get("created_at") or 0
+                if t >= window_24h:
+                    timestamps.append(t)
 
+        count = len(timestamps)
         limit = 50
+        refill_seconds = 0
+        refill_str = "Full"
+        sub_text = "Rolling 24-Hour Window"
+
+        if timestamps:
+            oldest_ts = min(timestamps)
+            refill_seconds = max(0, int((oldest_ts + 86400) - now))
+            h = refill_seconds // 3600
+            m = (refill_seconds % 3600) // 60
+            refill_at_str = time.strftime('%I:%M %p', time.localtime(oldest_ts + 86400))
+            if h > 0:
+                refill_str = f"{h}h {m}m"
+                sub_text = f"Next refill in {h}h {m}m ({refill_at_str})"
+            elif m > 0:
+                refill_str = f"{m}m"
+                sub_text = f"Next refill in {m}m ({refill_at_str})"
+            else:
+                refill_str = "< 1m"
+                sub_text = f"Next refill in < 1m ({refill_at_str})"
+        else:
+            sub_text = "Rolling 24-Hour Window (100% Available)"
+
         return {
             "used": count,
             "limit": limit,
             "remaining": max(0, limit - count),
             "percentage": min(100, int((count / limit) * 100)),
-            "window": "24-Hour Rolling Window"
+            "window": "24-Hour Rolling Window",
+            "refill_seconds": refill_seconds,
+            "refill_str": refill_str,
+            "refill_sub": sub_text
         }
 
     def get_all_quotas(self) -> Dict[str, Any]:

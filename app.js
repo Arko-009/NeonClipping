@@ -864,6 +864,7 @@ async function refreshSaved(){
 
    if ($('ig-quota-text')) $('ig-quota-text').textContent = `${quotas.instagram.used} / ${quotas.instagram.limit} Reels`;
    if ($('ig-quota-bar')) $('ig-quota-bar').style.width = Math.min(100, quotas.instagram.percentage) + '%';
+   if ($('ig-quota-reset-text') && quotas.instagram.refill_sub) $('ig-quota-reset-text').textContent = quotas.instagram.refill_sub;
   }
   if (schedData && Array.isArray(schedData.scheduled)) {
    renderScheduledQueue('yt', schedData.scheduled.filter(x => x.platform === 'youtube'));
