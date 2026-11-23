@@ -227,6 +227,12 @@ def attach(app, DATA: Path, probe):
                         bytes_freed += f.stat().st_size
                         f.unlink(missing_ok=True)
                     except OSError:pass
+            for pattern in (f"{sid}*.words.json", f"{sid}*.wav", f"{sid}.audio.*"):
+                for f in DATA.glob(pattern):
+                    try:
+                        bytes_freed += f.stat().st_size
+                        f.unlink(missing_ok=True)
+                    except OSError:pass
             pdir = DATA / f"{sid}-preview"
             if pdir.exists() and pdir.is_dir():
                 try:shutil.rmtree(pdir, ignore_errors=True)

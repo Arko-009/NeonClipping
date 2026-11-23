@@ -128,12 +128,13 @@ def library():
 def clear_library():
  bytes_freed=0
  deleted_count=0
- source_stems={f.name.split('.')[0] for f in DATA.glob('*.request.json')}
- keep_names={'models','jobs.sqlite3','transcripts'}
+ source_stems={f.name.split('.')[0] for f in list(DATA.glob('*.request.json')) + list(DATA.glob('*.state.json'))}
+ keep_names={'models','jobs.sqlite3','transcripts','publish_history.json','ig_cloud_queue.json'}
  for p in list(DATA.iterdir()):
-  if p.name in keep_names:continue
+  if p.name in keep_names or p.suffix in ('.sqlite3','.db') or p.name.startswith(('publish_history','ig_cloud_queue')):
+   continue
   stem=p.name.split('.')[0].replace('-preview','')
-  if stem in source_stems and p.name in (f"{stem}.mp4",f"{stem}.request.json",f"{stem}.state.json",f"{stem}-preview",stem):
+  if stem in source_stems and (p.name.startswith(f"{stem}.") or p.name in (f"{stem}-preview",stem)):
    continue
   try:
    if p.is_file():
