@@ -14,28 +14,19 @@ foreach ($dp in $desktopPaths) {
         $shortcut = $WshShell.CreateShortcut($lnkPath)
         $shortcut.TargetPath = "A:\temp\neonclipping\launch.bat"
         $shortcut.WorkingDirectory = "A:\temp\neonclipping"
-        $shortcut.IconLocation = "A:\temp\neonclipping\NeonClip.ico,0"
+        $shortcut.IconLocation = "A:\temp\neonclipping\NeonClip_v2.ico,0"
         $shortcut.Description = "NeonClipping Studio 2.0 - Autonomous AI Video Studio"
         $shortcut.Save()
-        Write-Host "Recreated shortcut: $lnkPath"
+        Write-Host "Created shortcut pointing to NeonClip_v2.ico: $lnkPath"
     }
 }
 
-# Tell Windows Explorer to refresh its icon cache immediately
+# Restart Windows Explorer to rebuild desktop icon cache
 try {
-    Add-Type -TypeDefinition @"
-    using System;
-    using System.Runtime.InteropServices;
-    public class ShellNotifier {
-        [DllImport("shell32.dll")]
-        public static extern void SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);
-        public static void RefreshIcons() {
-            SHChangeNotify(0x08000000, 0x0000, IntPtr.Zero, IntPtr.Zero);
-        }
-    }
-"@
-    [ShellNotifier]::RefreshIcons()
-    Write-Host "Windows Shell icon cache refreshed successfully!"
+    Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 800
+    Start-Process explorer
+    Write-Host "Windows Explorer restarted successfully - icon cache rebuilt!"
 } catch {
-    Write-Host "Icon refresh: $($_.Exception.Message)"
+    Write-Host "Explorer restart notice: $($_.Exception.Message)"
 }
