@@ -190,6 +190,7 @@ def execute_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip_pl
     total = len(clip_plans)
     task['total'] = total
     task['completed_clips'] = []
+    task['failed_clips'] = []
 
     try:
         creds, err = get_credentials(root_dir)
@@ -207,6 +208,7 @@ def execute_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip_pl
             publish_at = plan['publish_at']
             video_path = saved_dir / filename
             if not video_path.exists():
+                task['failed_clips'].append({'filename': filename, 'error': 'File not found on disk'})
                 continue
 
             raw_title = plan.get('title') or video_path.stem
@@ -232,53 +234,86 @@ def execute_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip_pl
                 'status': status_body
             }
 
-            media = MediaFileUpload(
-                str(video_path),
-                chunksize=1024 * 1024 * 2,
-                resumable=True,
-                mimetype='video/mp4'
-            )
+            try:
+                media = MediaFileUpload(
+                    str(video_path),
+                    chunksize=1024 * 1024 * 2,
+                    resumable=True,
+                    mimetype='video/mp4'
+                )
 
-            req = service.videos().insert(
-                part='snippet,status',
-                body=body,
-                media_body=media
-            )
+                req = service.videos().insert(
+                    part='snippet,status',
+                    body=body,
+                    media_body=media
+                )
 
-            response = None
-            while response is None:
-                upload_status, response = req.next_chunk()
-                if upload_status:
-                    pct = int(upload_status.progress() * 100)
-                    overall = int(((idx + upload_status.progress()) / total) * 100)
-                    task['progress'] = overall
-                    task['message'] = f"Uploading Short {idx+1}/{total}: {pct}% ({title[:30]}...)"
+                response = None
+                retries = 0
+                while response is None:
+                    try:
+                        upload_status, response = req.next_chunk()
+                        retries = 0
+                        if upload_status:
+                            pct = int(upload_status.progress() * 100)
+                            overall = int(((idx + upload_status.progress()) / total) * 100)
+                            task['progress'] = overall
+                            task['message'] = f"Uploading Short {idx+1}/{total}: {pct}% ({title[:30]}...)"
+                    except (HttpError, Exception) as chunk_err:
+                        if isinstance(chunk_err, HttpError) and chunk_err.resp.status in (401, 403):
+                            raise
+                        retries += 1
+                        if retries > 3:
+                            raise chunk_err
+                        time.sleep(retries * 2)
 
-            video_id = response.get('id')
-            shorts_url = f"https://youtube.com/shorts/{video_id}"
+                video_id = response.get('id')
+                shorts_url = f"https://youtube.com/shorts/{video_id}"
 
-            import publisher_scheduler
-            import datetime
-            dt = datetime.datetime.fromisoformat(publish_at.replace('Z', '+00:00'))
-            publisher_scheduler.scheduler.log_publish(
-                "youtube", filename, title, shorts_url, status="scheduled",
-                meta={"publish_at": publish_at, "video_id": video_id}
-            )
-            publisher_scheduler.scheduler.add_scheduled(
-                "youtube", filename, title, dt.timestamp(), publish_at,
-                {"video_id": video_id, "shorts_url": shorts_url}
-            )
+                import publisher_scheduler
+                import datetime
+                dt = datetime.datetime.fromisoformat(publish_at.replace('Z', '+00:00'))
+                publisher_scheduler.scheduler.log_publish(
+                    "youtube", filename, title, shorts_url, status="scheduled",
+                    meta={"publish_at": publish_at, "video_id": video_id}
+                )
+                publisher_scheduler.scheduler.add_scheduled(
+                    "youtube", filename, title, dt.timestamp(), publish_at,
+                    {"video_id": video_id, "shorts_url": shorts_url}
+                )
 
-            task['completed_clips'].append({
-                'filename': filename,
-                'title': title,
-                'shorts_url': shorts_url,
-                'publish_at': publish_at
-            })
+                task['completed_clips'].append({
+                    'filename': filename,
+                    'title': title,
+                    'shorts_url': shorts_url,
+                    'publish_at': publish_at
+                })
 
-        task['status'] = 'done'
-        task['progress'] = 100
-        task['message'] = f"Successfully scheduled all {len(task['completed_clips'])} Shorts on YouTube Cloud!"
+            except HttpError as clip_http_err:
+                err_msg = str(clip_http_err)
+                try:
+                    err_details = json.loads(clip_http_err.content.decode('utf-8'))
+                    err_msg = err_details.get('error', {}).get('message', str(clip_http_err))
+                except Exception:
+                    pass
+                task['failed_clips'].append({'filename': filename, 'error': err_msg})
+                # If daily quota exceeded, stop remaining clips
+                if 'quotaExceeded' in err_msg or clip_http_err.resp.status == 403:
+                    task['message'] = f"YouTube daily quota reached. Scheduled {len(task['completed_clips'])} Shorts."
+                    break
+            except Exception as clip_err:
+                task['failed_clips'].append({'filename': filename, 'error': str(clip_err)})
+
+        if len(task['completed_clips']) > 0:
+            task['status'] = 'done'
+            task['progress'] = 100
+            if task['failed_clips']:
+                task['message'] = f"Scheduled {len(task['completed_clips'])}/{total} Shorts on YouTube Cloud! ({len(task['failed_clips'])} failed)"
+            else:
+                task['message'] = f"Successfully scheduled all {len(task['completed_clips'])} Shorts on YouTube Cloud!"
+        else:
+            task['status'] = 'error'
+            task['error'] = task['failed_clips'][0]['error'] if task['failed_clips'] else 'Batch upload failed.'
 
     except HttpError as e:
         task['status'] = 'error'
