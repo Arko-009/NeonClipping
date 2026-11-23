@@ -26,6 +26,10 @@ if errorlevel 1 (
     exit /b 0
 )
 
+:: 2.5 Ensure Local AI (Ollama) is active in background for viral titles
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$c = (Get-NetTCPConnection -LocalPort 11434 -State Listen -ErrorAction SilentlyContinue); if (-not $c) { Start-Process 'ollama' -ArgumentList 'serve' -WindowStyle Hidden -ErrorAction SilentlyContinue }"
+
+
 :: 3. Launch background health waiter to pop browser when server is ready
 echo [*] Starting Studio background poller...
 start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "$ready = $false; for ($i=0; $i -lt 30; $i++) { try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8770/sources' -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop; if ($r.StatusCode -eq 200) { $ready = $true; break } } catch {}; Start-Sleep -Milliseconds 500 }; if ($ready) { Start-Process 'http://127.0.0.1:8770' }"

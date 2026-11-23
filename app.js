@@ -1033,7 +1033,24 @@ if($('btn-mode-auto')&&$('btn-mode-manual')){
  };
 }
 
-$('refresh-library').onclick=()=>refreshLibrary().catch(e=>status(e.message));if($('clear-library'))$('clear-library').onclick=async()=>{const n=$('library-count')?.textContent||'all';if(!confirm('Clear all '+n+' clips from the data cache folder?\n\nNOTE: Upload-ready copies in your "Saved" folder will remain safe!'))return;$('clear-library').disabled=true;try{const res=await request('/library/clear',{});status('Cleared '+res.count+' clip(s) from data cache ('+res.freed_mb+' MB freed).');await refreshLibrary();}catch(e){status('Could not clear clips: '+e.message);}finally{$('clear-library').disabled=false;}};if($('refresh-saved'))$('refresh-saved').onclick=()=>refreshSaved().catch(e=>status(e.message));if($('clear-saved'))$('clear-saved').onclick=async()=>{const n=$('saved-total-count')?.textContent||'all';const totalSize=$('saved-total-size')?.textContent||'';if(!confirm('Delete ALL '+n+' saved clips from the Saved folder ('+totalSize+')?\n\nThis will permanently delete all rendered upload-ready clips in your "Saved" folder.'))return;$('clear-saved').disabled=true;try{const res=await request('/saved/clear',{});status('Deleted '+res.count+' saved file(s) ('+(res.freed_gb>=1?res.freed_gb+' GB':res.freed_mb+' MB')+' freed).');await refreshSaved();}catch(e){status('Could not clear saved clips: '+e.message);}finally{$('clear-saved').disabled=false;}};if($('refresh-sources'))$('refresh-sources').onclick=()=>refreshSources().catch(e=>status(e.message));if($('clear-sources'))$('clear-sources').onclick=async()=>{const totalSize=$('sources-total-size')?.textContent||'all';if(!confirm('Delete ALL full source videos from disk ('+totalSize+')?\n\nThis will free up substantial disk space on your PC.'))return;$('clear-sources').disabled=true;try{const res=await request('/sources/clear',{});status('Deleted '+res.count+' source video(s) ('+(res.freed_gb||res.freed_mb+' MB')+' freed).');await refreshSources();}catch(e){status('Could not clear sources: '+e.message);}finally{$('clear-sources').disabled=false;}};
+$('refresh-library').onclick=()=>refreshLibrary().catch(e=>status(e.message));if($('clear-library'))$('clear-library').onclick=async()=>{const n=$('library-count')?.textContent||'all';if(!confirm('Clear all '+n+' clips from the data cache folder?\n\nNOTE: Upload-ready copies in your "Saved" folder will remain safe!'))return;$('clear-library').disabled=true;try{const res=await request('/library/clear',{});status('Cleared '+res.count+' clip(s) from data cache ('+res.freed_mb+' MB freed).');await refreshLibrary();}catch(e){status('Could not clear clips: '+e.message);}finally{$('clear-library').disabled=false;}};if($('refresh-saved'))$('refresh-saved').onclick=()=>refreshSaved().catch(e=>status(e.message));
+if($('ai-retitle-saved'))$('ai-retitle-saved').onclick=async()=>{
+ $('ai-retitle-saved').disabled=true;
+ status('🤖 Local AI (Ollama) is generating viral Gen-Z titles for your clips...');
+ try{
+  const res=await request('/saved/ai-retitle',{});
+  if(res.count>0){
+   status('✨ Renamed '+res.count+' clip(s) with viral Gen-Z titles!');
+  }else{
+   status('All clips already have custom or viral titles!');
+  }
+  await refreshSaved();
+ }catch(e){
+  status('Could not re-title clips: '+e.message);
+ }finally{
+  $('ai-retitle-saved').disabled=false;
+ }
+};if($('clear-saved'))$('clear-saved').onclick=async()=>{const n=$('saved-total-count')?.textContent||'all';const totalSize=$('saved-total-size')?.textContent||'';if(!confirm('Delete ALL '+n+' saved clips from the Saved folder ('+totalSize+')?\n\nThis will permanently delete all rendered upload-ready clips in your "Saved" folder.'))return;$('clear-saved').disabled=true;try{const res=await request('/saved/clear',{});status('Deleted '+res.count+' saved file(s) ('+(res.freed_gb>=1?res.freed_gb+' GB':res.freed_mb+' MB')+' freed).');await refreshSaved();}catch(e){status('Could not clear saved clips: '+e.message);}finally{$('clear-saved').disabled=false;}};if($('refresh-sources'))$('refresh-sources').onclick=()=>refreshSources().catch(e=>status(e.message));if($('clear-sources'))$('clear-sources').onclick=async()=>{const totalSize=$('sources-total-size')?.textContent||'all';if(!confirm('Delete ALL full source videos from disk ('+totalSize+')?\n\nThis will free up substantial disk space on your PC.'))return;$('clear-sources').disabled=true;try{const res=await request('/sources/clear',{});status('Deleted '+res.count+' source video(s) ('+(res.freed_gb||res.freed_mb+' MB')+' freed).');await refreshSources();}catch(e){status('Could not clear sources: '+e.message);}finally{$('clear-sources').disabled=false;}};
 request('/highlights').then(showHighlights).catch(e=>status(e.message));refreshLibrary().catch(e=>status(e.message));refreshSaved().catch(e=>status(e.message));refreshSources().catch(e=>status(e.message));switchView('home');
 const qParams=new URLSearchParams(window.location.search);
 if(qParams.has('code')){

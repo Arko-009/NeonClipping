@@ -414,14 +414,17 @@ def make(b:dict):
    done=[];cam_use,game_use,cam_checked=cam,game,not b.get('cam_auto')
    uploader=str((info.get('channel') or info.get('uploader') or '')) if url else ''
    for i,c in enumerate(found):
-    if not moments and c.get('transcript'):
-     try:
-      import smart
-      model=smart._model(profile!='action' or mode=='deep')
-      if model:
-       save(job,{'stage':f'Writing opening heading {i+1}/{len(found)}'})
-       c['hook']=smart._heading(model,c['transcript'])
-     except Exception:pass
+    t_text=c.get('transcript') or ' '.join(w.get('text','') for w in c.get('words',[]))
+    try:
+     import smart
+     save(job,{'stage':f'Writing viral title {i+1}/{len(found)}'})
+     vt,vh=smart.generate_title_and_hook(t_text,stream_title=title,language=video_lang)
+     if vt:c['title']=vt
+     if vh:c['hook']=vh
+    except Exception:
+     import smart
+     c['title']=smart.fallback_title(t_text,stream_title=title)
+     if not c.get('hook') and t_text:c['hook']=curation.extract_hook(t_text)
     if sections:
      sid2=sections[i].result();real=section_start(p,DATA/(sid2+'.mp4'),max(0,c['start']-PAD));start=max(0,c['start']-real);end=min(_dur(DATA/(sid2+'.mp4')),start+c['end']-c['start']);words=c.get('words')
     else:sid2=sid;start=c['start'];end=c['end'];words=c.get('words')
@@ -488,12 +491,14 @@ def live_render(sess,start,dur,why,chat_feature):
    words=[dict(w,text=to_hinglish(w['text'])) for w in words]
  else:words=[]
  text=' '.join(w['text'] for w in words);lap('captions')
- title,hook,llm='Live clip','',None
+ stream_title=str(sess.state.get('title') or '')
+ import smart
+ title,hook=smart.generate_title_and_hook(text,stream_title=stream_title,language=lang)
+ llm=None
  try:
-  import smart
   m=smart._model()
-  if m and len(text.split())>=4:
-   sc,t,h=smart._ask(m,text);title,hook,llm=t or title,h,sc/10
+  if m and text:
+   sc,_,_=smart._ask(m,text);llm=sc/10
  except Exception:pass
  loud=None
  try:

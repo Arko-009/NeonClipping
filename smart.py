@@ -1,7 +1,8 @@
 """Smart highlight refinement: shortlist by motion/audio, read each candidate's
 transcript locally, let local Ollama score and title it. Falls back to the
 activity score when Ollama is unavailable."""
-import json, urllib.request
+import json, urllib.request, subprocess, shutil, time
+from pathlib import Path
 from highlights import rank
 import excite, learn
 import curation
@@ -11,6 +12,30 @@ from captions import transcribe
 SCOUT_MODEL='base'     # deep mode overrides with a stronger model
 _=0   # fast reading of candidates; final captions use a better model
 OLLAMA='http://127.0.0.1:11434'
+
+def ensure_ollama():
+    """Ensure local Ollama service is up; if not, spawn it in the background."""
+    try:
+        urllib.request.urlopen(OLLAMA + '/api/tags', timeout=1)
+        return True
+    except Exception:
+        pass
+    exe = shutil.which('ollama') or r'C:\Users\R7\AppData\Local\Programs\Ollama\ollama.exe'
+    if exe and Path(exe).exists():
+        try:
+            creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+            subprocess.Popen([str(exe), 'serve'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=creationflags)
+            for _ in range(12):
+                time.sleep(0.3)
+                try:
+                    urllib.request.urlopen(OLLAMA + '/api/tags', timeout=1)
+                    return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return False
+
 PROMPT=('You are selecting viral, high-retention short video moments for Reels and Shorts. Loudness and fast movement are NOT quality by themselves. '
         'Quiet funny dialogue, a hilarious reaction, an unexpected reversal, a crazy fail, or a roast can score even higher than raw action. '
         'Score the actual CLIP, not surrounding context. Prefer a clear setup, meaningful stakes and a funny or shocking payoff. '
@@ -32,16 +57,63 @@ PROMPT=('You are selecting viral, high-retention short video moments for Reels a
 
 def _model(quality=False):
     try:
-        tags=json.load(urllib.request.urlopen(OLLAMA+'/api/tags',timeout=3))['models']
-        names=[m['name'] for m in tags]
-        if quality:
-            for n in names:
-                if n.startswith('gemma4:'):return n
-        for pref in ('llama3.2','qwen','gemma','llama'):
-            for n in names:
-                if pref in n:return n
-        return names[0] if names else None
-    except Exception:return None
+        tags=json.load(urllib.request.urlopen(OLLAMA+'/api/tags',timeout=2))['models']
+    except Exception:
+        if ensure_ollama():
+            try:tags=json.load(urllib.request.urlopen(OLLAMA+'/api/tags',timeout=2))['models']
+            except Exception:return None
+        else:return None
+    names=[m['name'] for m in tags]
+    if quality:
+        for n in names:
+            if n.startswith('gemma4:'):return n
+    for pref in ('llama3.2','qwen','gemma','llama'):
+        for n in names:
+            if pref in n:return n
+    return names[0] if names else None
+
+def fallback_title(text, stream_title=""):
+    """Smart heuristic title when transcript is available or for action clips."""
+    text = (text or '').strip()
+    if text:
+        hook = curation.extract_hook(text)
+        words = hook.split()
+        if len(words) > 7:
+            words = words[:7]
+        cand = ' '.join(words).strip('.,!?:;"\'-')
+        if len(cand) >= 3:
+            return cand.capitalize()
+    if stream_title and stream_title.lower() not in ('the video', 'the stream', 'imported video', 'uploaded video'):
+        clean_st = stream_title.split('|')[0].split('-')[0].strip()
+        if clean_st:
+            return f"{clean_st[:35]} Highlight"
+    return "Viral Gaming Highlight"
+
+def generate_title_and_hook(text, stream_title="", language=None):
+    """Generates a viral Gen-Z Shorts/Reels title and opening hook from the clip's transcript.
+    Falls back gracefully to transcript heuristic if Ollama is unavailable."""
+    text = (text or '').strip()
+    m = _model()
+    if not m or len(text.split()) < 3:
+        fb_title = fallback_title(text, stream_title)
+        fb_hook = curation.extract_hook(text) if text else (stream_title[:45] if stream_title else "Wait for this...")
+        return fb_title, fb_hook
+
+    try:
+        judged = _judge(m, text)
+        title = (judged.get('title') or '').strip().strip('"\'')
+        hook = (judged.get('hook') or '').strip().strip('"\'')
+        
+        banned_phrases = ('live clip', 'dialogue candidate', 'activity highlight', 'clip', 'untitled')
+        if not title or any(b in title.lower() for b in banned_phrases) or len(title) < 4:
+            title = fallback_title(text, stream_title)
+            
+        if not hook or any(b in hook.lower() for b in banned_phrases) or len(hook) < 4:
+            hook = curation.extract_hook(text) if text else "Wait till the end..."
+            
+        return title, hook
+    except Exception:
+        return fallback_title(text, stream_title), (curation.extract_hook(text) if text else "Wait till the end...")
 
 def _payload(model,prompt,budget=250,temperature=.25):
     payload={'model':model,'prompt':prompt,'stream':False,'format':'json','options':{'temperature':temperature,'num_predict':budget}}

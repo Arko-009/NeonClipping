@@ -127,3 +127,72 @@ def attach(app, SAVED: Path, probe):
             'freed_gb': freed_gb
         }
 
+    @app.post('/saved/ai-retitle')
+    def ai_retitle_saved():
+        import re, json
+        import smart
+        from instagram_publisher import extract_clip_transcript
+        data_dir = SAVED.parent / 'data'
+        
+        banned_prefixes = ('live clip', 'dialogue candidate', 'activity highlight', 'clip', 'untitled')
+        renamed = []
+        for p in list(SAVED.glob('*.mp4')):
+            if p.name.startswith('_'):
+                continue
+            stem = p.stem
+            if ' - ' in stem:
+                parts = stem.rsplit(' - ', 1)
+                title = parts[0]
+                short_id = parts[1]
+            else:
+                title = stem
+                short_id = stem[:6]
+            
+            # Check if title is generic
+            is_generic = any(title.strip().lower().startswith(b) for b in banned_prefixes) or len(title.strip()) < 4
+            if not is_generic:
+                continue
+                
+            t = extract_clip_transcript(p.name, SAVED, data_dir)
+            new_title, new_hook = smart.generate_title_and_hook(t, stream_title="")
+            clean = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', str(new_title or '')).strip().strip('. ')
+            if not clean or any(clean.lower().startswith(b) for b in banned_prefixes):
+                clean = smart.fallback_title(t)
+            
+            new_filename = f"{clean} - {short_id}.mp4"
+            if new_filename == p.name:
+                continue
+                
+            new_path = SAVED / new_filename
+            try:
+                p.rename(new_path)
+            except OSError:
+                continue
+            
+            old_srt = SAVED / f"{stem}.srt"
+            if old_srt.exists():
+                try: old_srt.rename(SAVED / f"{clean} - {short_id}.srt")
+                except OSError: pass
+                
+            old_ig = SAVED / f"_ig_norm_{stem}.mp4"
+            if old_ig.exists():
+                try: old_ig.rename(SAVED / f"_ig_norm_{clean} - {short_id}.mp4")
+                except OSError: pass
+                
+            for jf in data_dir.glob(f"{short_id}*.json"):
+                if jf.name.endswith(('.state.json', '.request.json', '.words.json')):
+                    continue
+                try:
+                    jdata = json.loads(jf.read_text(encoding='utf-8'))
+                    if isinstance(jdata, dict) and 'settings' in jdata:
+                        jdata['settings']['title'] = clean
+                        if new_hook: jdata['settings']['hook'] = new_hook
+                        jf.write_text(json.dumps(jdata, indent=2), encoding='utf-8')
+                except Exception:
+                    pass
+                    
+            renamed.append({'old': p.name, 'new': new_filename, 'title': clean, 'hook': new_hook})
+            
+        return {'ok': True, 'count': len(renamed), 'renamed': renamed}
+
+
