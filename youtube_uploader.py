@@ -153,13 +153,15 @@ def execute_upload(task_id: str, root_dir: Path, video_path: Path, title: str, d
                 import publisher_scheduler
                 import datetime
                 dt = datetime.datetime.fromisoformat(publish_at.replace('Z', '+00:00'))
+                local_dt = dt.astimezone()
+                local_str = local_dt.strftime('%b %d, %I:%M %p')
                 publisher_scheduler.scheduler.log_publish(
                     "youtube", video_path.name, title, task['shorts_url'], status="scheduled",
-                    meta={"publish_at": publish_at, "video_id": video_id}
+                    meta={"publish_at": publish_at, "video_id": video_id, "publish_at_local": local_str}
                 )
                 publisher_scheduler.scheduler.add_scheduled(
-                    "youtube", video_path.name, title, dt.timestamp(), publish_at,
-                    {"video_id": video_id, "shorts_url": task['shorts_url']}
+                    "youtube", video_path.name, title, dt.timestamp(), local_str,
+                    {"video_id": video_id, "shorts_url": task['shorts_url'], "publish_at": publish_at}
                 )
             except Exception:
                 pass
@@ -273,13 +275,15 @@ def execute_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip_pl
                 import publisher_scheduler
                 import datetime
                 dt = datetime.datetime.fromisoformat(publish_at.replace('Z', '+00:00'))
+                local_dt = dt.astimezone()
+                local_str = local_dt.strftime('%b %d, %I:%M %p')
                 publisher_scheduler.scheduler.log_publish(
                     "youtube", filename, title, shorts_url, status="scheduled",
-                    meta={"publish_at": publish_at, "video_id": video_id}
+                    meta={"publish_at": publish_at, "video_id": video_id, "publish_at_local": local_str}
                 )
                 publisher_scheduler.scheduler.add_scheduled(
-                    "youtube", filename, title, dt.timestamp(), publish_at,
-                    {"video_id": video_id, "shorts_url": shorts_url}
+                    "youtube", filename, title, dt.timestamp(), local_str,
+                    {"video_id": video_id, "shorts_url": shorts_url, "publish_at": publish_at}
                 )
 
                 task['completed_clips'].append({

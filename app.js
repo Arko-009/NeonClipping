@@ -287,7 +287,14 @@ function renderScheduledQueue(platform, items) {
  for (const item of items) {
   const card = document.createElement('div'); card.className = 'scheduled-item-card';
   const left = document.createElement('div'); left.className = 'scheduled-item-left';
-  const timeStr = item.scheduled_time_str || (item.scheduled_at ? new Date(item.scheduled_at * 1000).toLocaleString() : '');
+  let timeStr = item.scheduled_time_str || '';
+  if (item.scheduled_at) {
+   const d = new Date(item.scheduled_at * 1000);
+   timeStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  } else if (timeStr && (timeStr.includes('T') || timeStr.endsWith('Z'))) {
+   const d = new Date(timeStr);
+   timeStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
   const isErr = item.status === 'error';
   const statusHtml = isErr 
     ? `<span class="scheduled-item-time" style="color:#ff4ba5;font-weight:600">⚠️ Meta Blocked: ${item.error ? (item.error.includes('OAuthException') ? 'API access blocked (Need fresh token)' : item.error.slice(0, 45)) : 'Publish failed'}</span>` 
