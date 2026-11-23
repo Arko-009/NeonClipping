@@ -19,8 +19,9 @@ except Exception:
     PST_TZ = datetime.timezone(datetime.timedelta(hours=-8))
 
 class PublisherScheduler:
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Optional[Path] = None, saved_dir: Optional[Path] = None):
         self.data_dir = data_dir or DATA_DIR
+        self.saved_dir = saved_dir
         self.history_file = self.data_dir / 'publish_history.json'
         self.lock = threading.Lock()
         self._ensure_storage()
@@ -210,6 +211,129 @@ class PublisherScheduler:
         except Exception:
             pass
 
+    # ---- DUAL-PLATFORM AUTO-DELETE ENGINE (OPTION A) ----
+    def get_dual_scheduled_keys(self) -> Dict[str, set]:
+        """Returns filenames and 6-char IDs of clips scheduled/published on BOTH Instagram and YouTube."""
+        data = self._load_data()
+        ig_files = set()
+        ig_ids = set()
+        yt_files = set()
+        yt_ids = set()
+
+        def extract_id(fn: Optional[str]) -> Optional[str]:
+            if not fn:
+                return None
+            s = Path(fn).stem
+            if ' - ' in s:
+                return s.rsplit(' - ', 1)[1][:6]
+            return s[:6]
+
+        for item in data.get("history", []) + data.get("scheduled", []):
+            st = item.get("status")
+            pl = item.get("platform")
+            fn = item.get("video_filename")
+            if not fn or st not in ("published", "scheduled"):
+                continue
+            sid = extract_id(fn)
+            if pl == "instagram":
+                ig_files.add(fn)
+                if sid:
+                    ig_ids.add(sid)
+            elif pl == "youtube":
+                yt_files.add(fn)
+                if sid:
+                    yt_ids.add(sid)
+
+        return {
+            "ig_files": ig_files,
+            "ig_ids": ig_ids,
+            "yt_files": yt_files,
+            "yt_ids": yt_ids
+        }
+
+    def is_dual_scheduled(self, filename_or_id: str) -> bool:
+        keys = self.get_dual_scheduled_keys()
+        fn = Path(filename_or_id).name
+        sid = filename_or_id[:6]
+        if ' - ' in fn:
+            sid = fn.rsplit(' - ', 1)[1][:6]
+
+        is_ig = (fn in keys["ig_files"]) or (sid in keys["ig_ids"])
+        is_yt = (fn in keys["yt_files"]) or (sid in keys["yt_ids"])
+        return is_ig and is_yt
+
+    def prune_dual_scheduled(self, saved_dir: Optional[Path] = None, data_dir: Optional[Path] = None) -> List[str]:
+        """
+        Option A: Auto-Delete Once Both Are Scheduled.
+        Safely removes local physical video files (.mp4, .srt, _ig_norm_*.mp4)
+        from Saved/ (and redundant rendered cache from data/) once confirmed on BOTH platforms.
+        Never touches pending clips or unscheduled files.
+        """
+        keys = self.get_dual_scheduled_keys()
+        target_saved = (saved_dir or self.saved_dir or (self.data_dir.parent / 'Saved')).resolve()
+        target_data = (data_dir or self.data_dir).resolve()
+        pruned_filenames = []
+
+        if not target_saved.exists():
+            return pruned_filenames
+
+        def extract_id(fn: str) -> str:
+            s = Path(fn).stem
+            if ' - ' in s:
+                return s.rsplit(' - ', 1)[1][:6]
+            return s[:6]
+
+        for p in list(target_saved.glob('*.mp4')):
+            if p.name.startswith('_'):
+                continue
+            sid = extract_id(p.name)
+            is_ig = (p.name in keys["ig_files"]) or (sid in keys["ig_ids"])
+            is_yt = (p.name in keys["yt_files"]) or (sid in keys["yt_ids"])
+
+            if is_ig and is_yt:
+                try:
+                    # 1. Delete saved .mp4
+                    p.unlink(missing_ok=True)
+                    # 2. Delete .srt
+                    srt = p.with_suffix('.srt')
+                    if srt.exists():
+                        srt.unlink(missing_ok=True)
+                    # 3. Delete _ig_norm cache
+                    ig_norm = target_saved / f"_ig_norm_{p.stem}.mp4"
+                    if ig_norm.exists():
+                        ig_norm.unlink(missing_ok=True)
+
+                    pruned_filenames.append(p.name)
+                    print(f"[Scheduler Auto-Prune] Deleted dual-scheduled clip from Saved: {p.name}")
+
+                    # 4. Clean up corresponding data/ copy and mark job json pruned
+                    if sid and target_data.exists():
+                        for jf in target_data.glob(f"{sid}*.json"):
+                            if jf.name.endswith(('.state.json', '.request.json', '.words.json')):
+                                continue
+                            # Delete duplicate intermediate mp4 in data/
+                            d_mp4 = target_data / f"{jf.stem}.mp4"
+                            if d_mp4.exists():
+                                try:
+                                    d_mp4.unlink(missing_ok=True)
+                                    print(f"[Scheduler Auto-Prune] Cleaned data cache: {d_mp4.name}")
+                                except Exception:
+                                    pass
+                            # Mark json as pruned so sync_existing_to_saved never resurrects it
+                            try:
+                                j_content = json.loads(jf.read_text(encoding='utf-8'))
+                                if isinstance(j_content, dict):
+                                    j_content["pruned"] = True
+                                    j_content["dual_scheduled"] = True
+                                    j_content["pruned_at"] = time.time()
+                                    jf.write_text(json.dumps(j_content, indent=2), encoding='utf-8')
+                            except Exception:
+                                pass
+                except Exception as e:
+                    print(f"[Scheduler Auto-Prune] Error pruning {p.name}: {e}")
+
+        return pruned_filenames
+
     # ---- BACKGROUND DISPATCHER FOR PRE-STAGED INSTAGRAM POSTS ----
     def _background_poll(self):
         while self._worker_running:
@@ -307,6 +431,9 @@ class PublisherScheduler:
 scheduler = PublisherScheduler()
 
 def attach(app: FastAPI, ROOT_DIR: Path, SAVED_DIR: Path):
+    scheduler.saved_dir = SAVED_DIR
+    scheduler.data_dir = ROOT_DIR / 'data'
+
     class CancelReq(BaseModel):
         id: str
 
@@ -326,3 +453,8 @@ def attach(app: FastAPI, ROOT_DIR: Path, SAVED_DIR: Path):
         if not ok:
             raise HTTPException(404, "Scheduled post not found or already published")
         return {"ok": True, "id": req.id}
+
+    @app.post('/publishing/prune-dual')
+    def trigger_prune_dual():
+        pruned = scheduler.prune_dual_scheduled(SAVED_DIR, ROOT_DIR / 'data')
+        return {"ok": True, "pruned": pruned, "count": len(pruned)}

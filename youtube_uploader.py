@@ -163,6 +163,7 @@ def execute_upload(task_id: str, root_dir: Path, video_path: Path, title: str, d
                     "youtube", video_path.name, title, dt.timestamp(), local_str,
                     {"video_id": video_id, "shorts_url": task['shorts_url'], "publish_at": publish_at}
                 )
+                publisher_scheduler.scheduler.prune_dual_scheduled(video_path.parent)
             except Exception:
                 pass
         else:
@@ -173,6 +174,7 @@ def execute_upload(task_id: str, root_dir: Path, video_path: Path, title: str, d
                     "youtube", video_path.name, title, task['shorts_url'], status="published",
                     meta={"video_id": video_id}
                 )
+                publisher_scheduler.scheduler.prune_dual_scheduled(video_path.parent)
             except Exception:
                 pass
     except HttpError as e:
@@ -311,6 +313,11 @@ def execute_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip_pl
         if len(task['completed_clips']) > 0:
             task['status'] = 'done'
             task['progress'] = 100
+            try:
+                import publisher_scheduler
+                publisher_scheduler.scheduler.prune_dual_scheduled(saved_dir)
+            except Exception:
+                pass
             if task['failed_clips']:
                 task['message'] = f"Scheduled {len(task['completed_clips'])}/{total} Shorts on YouTube Cloud! ({len(task['failed_clips'])} failed)"
             else:

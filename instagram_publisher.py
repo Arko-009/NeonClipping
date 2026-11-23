@@ -507,6 +507,7 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
                         "access_token": token
                     }
                 )
+                publisher_scheduler.scheduler.prune_dual_scheduled(saved_dir)
             except Exception as e:
                 logger.error(f"Failed to record scheduled Instagram post: {e}")
             return
@@ -553,6 +554,7 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
                 "instagram", video_filename, caption or video_filename, permalink, status="published",
                 meta={"media_id": media_id}
             )
+            publisher_scheduler.scheduler.prune_dual_scheduled(saved_dir)
         except Exception:
             pass
 

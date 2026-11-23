@@ -10,6 +10,12 @@ def attach(app, SAVED: Path, probe):
 
     @app.get('/saved')
     def list_saved():
+        try:
+            import publisher_scheduler
+            publisher_scheduler.scheduler.prune_dual_scheduled(SAVED)
+        except Exception:
+            pass
+
         clips = []
         total_bytes = 0
         for p in SAVED.glob('*.mp4'):

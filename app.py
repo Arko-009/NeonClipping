@@ -53,6 +53,8 @@ def sync_existing_to_saved():
     j=json.loads(f.read_text(encoding='utf-8'))
     if not isinstance(j, dict): continue
     if j.get('result',{}).get('status')=='done' and not j.get('superseded_by'):
+     if j.get('pruned') or j.get('dual_scheduled'):
+      continue
      existing=list(SAVED.glob(f"* - {f.stem[:6]}.mp4"))
      if not existing:
       title=j.get('settings',{}).get('title') or 'Clip'
