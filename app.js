@@ -1061,7 +1061,7 @@ if(qParams.has('code')){
 }
 
 $('make').onclick=async()=>{const url=$('url')?.value?.trim()||'';if(!url&&!id){status('Paste a video link or upload a file first.');return;}
- const b=$('make');b.disabled=true;const b2=$('make-auto-btn');if(b2)b2.disabled=true;$('make-results').hidden=false;$('make-results').querySelector('.star-ask')?.remove();$('make-grid').replaceChildren();$('make-progress').style.width='2%';
+ const b=$('make');b.disabled=true;$('make-results').hidden=false;$('make-results').querySelector('.star-ask')?.remove();$('make-grid').replaceChildren();$('make-progress').style.width='2%';
  try{const {job}=await request('/make',{...(url?{url}:{id}),count:Number($('count')?.value||4),mode:$('mode')?.value||'fast',moment_profile:$('moment-profile')?.value||'balanced',accurate:$('accurate')?.value||'fast',min_len:Number($('minlen')?.value||30),max_len:Number($('length')?.value||60),layout:makeLayout(),aspect:$('aspect')?.value||'vertical',resolution:Number($('resolution')?.value||1080),fps:Number($('fps')?.value||0),cam:rect?.cam||{x:.72,y:.40,w:.28,h:.28},game:rect?.game||{x:.25,y:0,w:.50,h:1},top:Number($('top')?.value||32)/100,caption_style:style||'gta',language:($('language')?.value==='auto'?'':$('language')?.value)||''});
   const shown=new Set();
   for(;;){const s=await request('/make/'+job);$('make-status').textContent=(s.stage||s.status)+' · '+Math.round((s.progress||0)*100)+'%';$('make-progress').style.width=Math.max(2,(s.progress||0)*100)+'%';
@@ -1071,8 +1071,7 @@ $('make').onclick=async()=>{const url=$('url')?.value?.trim()||'';if(!url&&!id){
     const fb=document.createElement('small');fb.className='fb';fb.textContent='Rate this clip ↑';const edit=document.createElement('button');edit.textContent='Edit clip';edit.onclick=()=>openSavedClip(d.dataset.file).catch(e=>status(e.message));d.append(vid,t,vb,m,rs,a,edit,stars,fb);}
     appendVisualReview(d,c.visual_review);$('make-grid').append(d);});
    if(s.status==='error')throw Error(s.error);if(s.status==='done'){if(!(s.clips||[]).length){$('make-status').textContent=s.stage||'No moments matched. Broaden your filters and try again.';break;}$('make-status').textContent='Done · '+(s.clips||[]).length+' clips in '+s.elapsed_seconds+'s · also in My clips ('+(s.engine||'')+')';if(!$('make-results').querySelector('.star-ask')){const q=document.createElement('div');q.className='star-ask';q.innerHTML='Free and open-source. If these clips saved you time, <a href="https://github.com/iamajmeena/neonclipping" target="_blank" rel="noopener">★ star NeonClipping on GitHub</a> and follow <a href="https://www.instagram.com/iamajmeena/" target="_blank" rel="noopener">@iamajmeena</a> for more tools.';$('make-results').append(q);}break;}
-   await sleep(1000);}}catch(e){$('make-status').textContent=e.message;}finally{b.disabled=false;if(b2)b2.disabled=false;}};
-if($('make-auto-btn'))$('make-auto-btn').onclick=()=>$('make').click();
+   await sleep(1000);}}catch(e){$('make-status').textContent=e.message;}finally{b.disabled=false;}};
 
 const PRESETS={tl:{cam:{x:0,y:0,w:.24,h:.32},game:{x:.24,y:0,w:.76,h:1}},tr:{cam:{x:.76,y:0,w:.24,h:.32},game:{x:0,y:0,w:.76,h:1}},
  bl:{cam:{x:0,y:.68,w:.24,h:.32},game:{x:.24,y:0,w:.76,h:1}},br:{cam:{x:.76,y:.68,w:.24,h:.32},game:{x:0,y:0,w:.76,h:1}},bc:{cam:{x:.37,y:.68,w:.26,h:.32},game:{x:0,y:0,w:1,h:.68}}};

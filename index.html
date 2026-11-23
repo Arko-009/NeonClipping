@@ -140,72 +140,42 @@
       </div>
     </div>
 
-    <!-- Shared Step 01: Bring your video (Visible in both Auto & Manual) -->
-    <section class="panel import-panel">
-      <div class="section-head">
-        <h2><span class="step">01</span> Bring your video</h2>
-        <label class="upload">↑ Upload video<input id="file" type="file" accept="video/*" hidden></label>
-      </div>
-      <div class="live-format-bar">
-        <span class="live-format-label">Clip format:</span>
-        <button type="button" class="live-fmt-btn active" data-fmt="stack">🎭 Facecam &amp; Gameplay</button>
-        <button type="button" class="live-fmt-btn" data-fmt="game">🎮 Gameplay Only</button>
-      </div>
-      <div class="url-row">
-        <input id="url" type="url" placeholder="Paste a YouTube, Twitch or Kick replay link">
-        <button class="primary" id="link">Get preview ↗</button>
-        <button class="primary make" id="make">⚡ Make clips</button>
-      </div>
-      <div class="make-row">
-        <span class="muted">Make clips = one click: download → AI picks best moments → captioned 9:16 clips. Uses the Clips / length / layout / caption style below.</span>
-      </div>
-      <div class="import-note" id="link-status" role="status">Frames arrive first. Select your areas while the full source downloads.</div>
-      <div class="progress-track" hidden id="progress-wrap"><div id="progress"></div></div>
-      <div id="frames" class="frames"></div>
-      <label class="toggle" style="margin-top:12px"><input id="auto-analyze" type="checkbox" checked> Find highlights automatically when the source is ready</label>
-    </section>
-
-    <!-- Shared Step 02: Make it your format (Visible in both 1-Click Auto Mode & Manual Mode) -->
-    <section class="panel" id="format-panel">
-      <div class="section-head"><h2><span class="step">02</span> Make it your format</h2><span class="muted">9:16 · 1080 × 1920</span></div>
-      <div class="controls">
-        <label>Caption accuracy<select id="accurate"><option value="fast" selected>YouTube captions (default)</option><option value="best">Best Hindi: large-v3 (slow)</option></select></label>
-        <label>Mode<select id="mode"><option value="fast">⚡ Fast (~2-3 min)</option><option value="deep">🔬 Deep (slower, smarter)</option></select></label>
-        <label>Moment mix<select id="moment-profile"><option value="balanced" selected>Balanced: action + dialogue + story</option><option value="action">Action / high energy</option><option value="dialogue">Dialogue, humour &amp; insights</option></select></label>
-        <label>Clips<input id="count" type="number" min="1" max="12" value="4"></label>
-        <label>Min length (s)<input id="minlen" type="number" min="5" max="120" value="30"></label>
-        <label>Max length (s)<input id="length" type="number" min="10" max="180" value="60"></label>
-      </div>
-      <div class="controls output-controls">
-        <label>Output format<select id="aspect"><option value="vertical">9:16 · Shorts / Reels</option><option value="square">1:1 · Square</option><option value="portrait">4:5 · Feed</option><option value="threefour">3:4 · Portrait</option><option value="landscape">16:9 · YouTube</option></select></label>
-        <label>Resolution<select id="resolution"><option value="720">720</option><option value="1080" selected>1080</option><option value="2160">2160 · 4K</option></select></label>
-        <label>Frame rate<select id="fps"><option value="0">Keep original</option><option value="24">24 fps</option><option value="30">30 fps</option><option value="60">60 fps</option></select></label>
-      </div>
-      <div class="layout-grid" id="layouts">
-        <button class="choice active" data-layout="stack"><span class="mini stack-mini"><i></i><i></i></span><b>Face + gameplay</b><small>Choose both areas</small></button>
-        <button class="choice" data-layout="blur"><span class="mini blur-mini"><i></i></span><b>Blurred fill</b><small>Keep the wider frame</small></button>
-        <button class="choice" data-layout="fill"><span class="mini fill-mini"><i></i></span><b>Fill screen</b><small>Bold centre crop</small></button>
-        <button class="choice" data-layout="game"><span class="mini game-mini"><i></i></span><b>Gameplay only</b><small>Use your selected area</small></button>
-      </div>
-      <div class="preset-row"><b>Facecam position</b><button class="chip" data-preset="tl">↖ Top-left</button><button class="chip" data-preset="tr">↗ Top-right</button><button class="chip" data-preset="bl">↙ Bottom-left</button><button class="chip" data-preset="br">↘ Bottom-right</button><button class="chip" data-preset="bc">⬇ Bottom-centre</button><button class="chip" data-preset="none">No facecam</button><span class="muted" id="preset-note">Pick one, or draw the boxes yourself in manual framing.</span></div>
-    </section>
-
-    <!-- Shared Step 03: Subtitle & Voice Style (Visible in both 1-Click Auto Mode & Manual Mode) -->
-    <section class="panel" id="caption-style-panel">
-      <div class="section-head"><h2><span class="step">03</span> Subtitle &amp; Voice Style</h2><label class="toggle"><input id="captions" type="checkbox" checked> Burn in subtitles</label></div>
-      <div class="caption-styles"><button class="caption-choice active gta" data-style="gta"><span>THIS IS <strong>WILD</strong></span><b>GTA Neon</b><small>Pink / cyan / electric lime</small></button><button class="caption-choice bold" data-style="bold"><span>THIS IS <strong>WILD</strong></span><b>Impact</b><small>Bold active-word highlight</small></button><button class="caption-choice hormozi" data-style="hormozi"><span>THIS IS <strong style="color:#00ffff">WILD</strong></span><b>Hormozi</b><small>White + cyan pop, thick outline</small></button><button class="caption-choice mrbeast" data-style="mrbeast"><span style="color:#ffff00">THIS IS <strong style="color:#ff6600">WILD</strong></span><b>MrBeast</b><small>Yellow + orange, huge outline</small></button><button class="caption-choice clean" data-style="clean"><span>This is wild.</span><b>Clean</b><small>Quiet, readable subtitles</small></button></div>
-      <div class="controls"><label>Spoken language<select id="language"><option value="">Auto (Hindi → Hinglish)</option><option value="hinglish">Hinglish (Hindi in English letters)</option><option value="hi">हिंदी (Devanagari)</option><option value="en">English</option></select></label><label>Caption height<input id="caption-y" type="range" min="500" max="1750" value="1450"></label></div>
-    </section>
-
-    <!-- Container A: 1-Click Auto Mode Specific -->
+    <!-- Container A: 1-Click Auto Mode -->
     <div id="video-auto-container">
-      <section class="panel auto-action-panel">
-        <div class="auto-action-row">
-          <div>
-            <h3>⚡ 1-Click Viral Clipper Ready</h3>
-            <p>AI automatically downloads the video, detects viral moments matching your moment mix &amp; length, crops the vertical frame, burns subtitles, and saves upload-ready clips to Publish Media.</p>
-          </div>
-          <button type="button" class="primary make-large-btn" id="make-auto-btn">⚡ Make clips</button>
+      <section class="panel import-panel">
+        <div class="section-head">
+          <h2><span class="step">01</span> Bring your video</h2>
+          <label class="upload">↑ Upload video<input id="file" type="file" accept="video/*" hidden></label>
+        </div>
+        <div class="live-format-bar">
+          <span class="live-format-label">Clip format:</span>
+          <button type="button" class="live-fmt-btn active" data-fmt="stack">🎭 Facecam &amp; Gameplay</button>
+          <button type="button" class="live-fmt-btn" data-fmt="game">🎮 Gameplay Only</button>
+        </div>
+        <div class="url-row">
+          <input id="url" type="url" placeholder="Paste a YouTube, Twitch or Kick replay link">
+          <button class="primary" id="link">Get preview ↗</button>
+          <button class="primary make" id="make">⚡ Make clips</button>
+        </div>
+        <div class="make-row">
+          <span class="muted">Make clips = one click: download → AI picks best moments → captioned 9:16 clips. Uses the format options below.</span>
+        </div>
+        <div class="import-note" id="link-status" role="status">Frames arrive first. Select your areas while the full source downloads.</div>
+        <div class="progress-track" hidden id="progress-wrap"><div id="progress"></div></div>
+        <div id="frames" class="frames"></div>
+        <label class="toggle" style="margin-top:12px"><input id="auto-analyze" type="checkbox" checked> Find highlights automatically when the source is ready</label>
+      </section>
+
+      <!-- 02 Make it your format (Auto Mode Format Bar) -->
+      <section class="panel">
+        <div class="section-head"><h2><span class="step">02</span> Make it your format</h2><span class="muted">9:16 · 1080 × 1920</span></div>
+        <div class="controls">
+          <label>Caption accuracy<select id="accurate"><option value="fast" selected>YouTube captions (default)</option><option value="best">Best Hindi: large-v3 (slow)</option></select></label>
+          <label>Mode<select id="mode"><option value="fast">⚡ Fast (~2-3 min)</option><option value="deep">🔬 Deep (slower, smarter)</option></select></label>
+          <label>Moment mix<select id="moment-profile"><option value="balanced" selected>Balanced: action + dialogue + story</option><option value="action">Action / high energy</option><option value="dialogue">Dialogue, humour &amp; insights</option></select></label>
+          <label>Clips<input id="count" type="number" min="1" max="12" value="4"></label>
+          <label>Min length (s)<input id="minlen" type="number" min="5" max="120" value="30"></label>
+          <label>Max length (s)<input id="length" type="number" min="10" max="180" value="60"></label>
         </div>
       </section>
 
@@ -245,14 +215,24 @@
     <!-- Container B: Manual Clipping Mode Specific -->
     <div id="video-manual-container" hidden>
       <section class="panel">
-        <div class="manual-highlight-bar">
-          <span>Need to preview candidate moments before exporting? Click Find highlights below to load candidate segments into Step 04.</span>
+        <div class="section-head"><h2><span class="step">02</span> Manual Format &amp; Layout</h2><span class="muted">9:16 · 1080 × 1920</span></div>
+        <div class="controls output-controls">
+          <label>Output format<select id="aspect"><option value="vertical">9:16 · Shorts / Reels</option><option value="square">1:1 · Square</option><option value="portrait">4:5 · Feed</option><option value="threefour">3:4 · Portrait</option><option value="landscape">16:9 · YouTube</option></select></label>
+          <label>Resolution<select id="resolution"><option value="720">720</option><option value="1080" selected>1080</option><option value="2160">2160 · 4K</option></select></label>
+          <label>Frame rate<select id="fps"><option value="0">Keep original</option><option value="24">24 fps</option><option value="30">30 fps</option><option value="60">60 fps</option></select></label>
           <button class="secondary" id="analyze">✦ Find highlights</button>
         </div>
+        <div class="layout-grid" id="layouts">
+          <button class="choice active" data-layout="stack"><span class="mini stack-mini"><i></i><i></i></span><b>Face + gameplay</b><small>Choose both areas</small></button>
+          <button class="choice" data-layout="blur"><span class="mini blur-mini"><i></i></span><b>Blurred fill</b><small>Keep the wider frame</small></button>
+          <button class="choice" data-layout="fill"><span class="mini fill-mini"><i></i></span><b>Fill screen</b><small>Bold centre crop</small></button>
+          <button class="choice" data-layout="game"><span class="mini game-mini"><i></i></span><b>Gameplay only</b><small>Use your selected area</small></button>
+        </div>
+        <div class="preset-row"><b>Facecam position</b><button class="chip" data-preset="tl">↖ Top-left</button><button class="chip" data-preset="tr">↗ Top-right</button><button class="chip" data-preset="bl">↙ Bottom-left</button><button class="chip" data-preset="br">↘ Bottom-right</button><button class="chip" data-preset="bc">⬇ Bottom-centre</button><button class="chip" data-preset="none">No facecam</button><span class="muted" id="preset-note">Pick one, or draw the boxes yourself in manual framing.</span></div>
       </section>
 
       <section class="panel">
-        <div class="section-head"><h2><span class="step">04</span> Frame your moment</h2><span class="pill" id="source-mode">NO SOURCE YET</span></div>
+        <div class="section-head"><h2><span class="step">03</span> Frame your moment</h2><span class="pill" id="source-mode">NO SOURCE YET</span></div>
         <div class="candidate-row"><select id="recent"><option>No highlights yet</option></select><button id="import">Open highlight</button></div>
         <div class="workspace">
           <div class="source-side">
@@ -266,12 +246,39 @@
       </section>
 
       <section class="panel">
-        <div class="section-head"><h2><span class="step">05</span> Word Timing &amp; Captions Editor</h2><button id="transcribe" class="secondary">Generate subtitles</button></div>
-        <div class="manual-overrides"><label class="toggle"><input id="timing-editor" type="checkbox"> Edit word timings</label><div class="controls"><label>Shift captions (seconds)<input id="caption-shift" type="number" step="0.1" value="0.5"></label><button id="shift-captions">Shift all words</button></div><div id="words" class="word-editor"></div><div class="copy-grid"><label>Opening hook / optional<input id="hook" placeholder="Add your own opening line" maxlength="65"></label><label>Clip title<input id="clip-title" placeholder="Give this clip a name"></label></div><label>Post caption<textarea id="post-caption" rows="2" placeholder="Generate subtitles to draft a caption, then edit it in your voice."></textarea></label></div>
+        <div class="section-head"><h2><span class="step">04</span> Give it a voice</h2><label class="toggle"><input id="captions" type="checkbox" checked> Burn in subtitles</label></div>
+        <div class="caption-styles"><button class="caption-choice active gta" data-style="gta"><span>THIS IS <strong>WILD</strong></span><b>GTA Neon</b><small>Pink / cyan / electric lime</small></button><button class="caption-choice bold" data-style="bold"><span>THIS IS <strong>WILD</strong></span><b>Impact</b><small>Bold active-word highlight</small></button><button class="caption-choice hormozi" data-style="hormozi"><span>THIS IS <strong style="color:#00ffff">WILD</strong></span><b>Hormozi</b><small>White + cyan pop, thick outline</small></button><button class="caption-choice mrbeast" data-style="mrbeast"><span style="color:#ffff00">THIS IS <strong style="color:#ff6600">WILD</strong></span><b>MrBeast</b><small>Yellow + orange, huge outline</small></button><button class="caption-choice clean" data-style="clean"><span>This is wild.</span><b>Clean</b><small>Quiet, readable subtitles</small></button></div>
+        <div class="controls"><label>Spoken language<select id="language"><option value="">Auto (Hindi → Hinglish)</option><option value="hinglish">Hinglish (Hindi in English letters)</option><option value="hi">हिंदी (Devanagari)</option><option value="en">English</option></select></label><label>Caption height<input id="caption-y" type="range" min="500" max="1750" value="1450"></label><button id="transcribe" class="secondary">Generate subtitles</button></div>
+        <div class="manual-overrides" style="display:none"><label class="toggle"><input id="timing-editor" type="checkbox"> Edit word timings</label><div class="controls"><label>Shift captions (seconds)<input id="caption-shift" type="number" step="0.1" value="0.5"></label><button id="shift-captions">Shift all words</button></div><div id="words" class="word-editor"></div><div class="copy-grid"><label>Opening hook / optional<input id="hook" placeholder="Add your own opening line" maxlength="65"></label><label>Clip title<input id="clip-title" placeholder="Give this clip a name"></label></div><label>Post caption<textarea id="post-caption" rows="2" placeholder="Generate subtitles to draft a caption, then edit it in your voice."></textarea></label></div>
       </section>
 
       <section class="panel" id="style-panel">
-        <div class="section-head"><h2><span class="step">06</span> Style &amp; extras</h2><span class="pill">NEW</span></div>
+        <div class="section-head"><h2><span class="step">05</span> Style &amp; extras</h2><span class="pill">NEW</span></div>
+        <div class="controls"><label>Template<select id="st-template"><option value="none">None (use the layout above)</option><option value="x_light">X post · light</option><option value="x_dark">X post · dark</option><option value="tiktok_hook">TikTok hook</option><option value="breaking_news">Breaking news</option></select></label><label>Name on the card<input id="st-tpl-name" type="text" maxlength="28" placeholder="Your Name"></label><label>@handle<input id="st-tpl-handle" type="text" maxlength="28" placeholder="yourhandle"></label></div>
+        <div class="controls"><label>Background<select id="st-bg-mode"><option value="none">None</option><option value="blur">Blurred copy</option><option value="color">Colour</option><option value="gradient">Gradient</option><option value="image">My image</option></select></label><label>Colour<input id="st-bg-color" type="color" value="#0b0912"></label><label>Colour 2<input id="st-bg-color2" type="color" value="#ff4ba5"></label><label class="upload">↑ Background image<input id="st-bg-file" type="file" accept="image/*" hidden></label><span class="muted" id="st-bg-name"></span></div>
+        <div class="controls"><label class="upload">↑ Logo / watermark<input id="st-wm-file" type="file" accept="image/*" hidden></label><span class="muted" id="st-wm-name">no logo</span><label>Position<select id="st-wm-pos"><option value="tr">Top-right</option><option value="tl">Top-left</option><option value="br">Bottom-right</option><option value="bl">Bottom-left</option></select></label></div>
+        <div class="controls"><label>Credit line<input id="st-credit" type="text" maxlength="60" placeholder="Clip: Channel name"></label><label class="check"><input id="st-credit-auto" type="checkbox"> Use channel name</label><label>Outro ribbon<input id="st-outro" type="text" maxlength="40" placeholder="FOLLOW @yourhandle"></label><label>Outro seconds<input id="st-outro-sec" type="number" min="1.5" max="8" step=".5" value="3"></label></div>
+        <div class="controls"><label class="upload">↑ Music track<input id="st-music-file" type="file" accept="audio/*" hidden></label><span class="muted" id="st-music-name">no music</span><label><span>Volume <output id="st-mv-o">15</output>%</span><input id="st-music-vol" type="range" min="0" max="100" value="15"></label></div>
+        <div class="import-note">The music sits low under the voice, then rises to its peak volume in the last seconds.</div>
+        <div class="controls"><button class="secondary" id="st-reset">Reset all style options</button></div>
+      </section>
+
+      <section class="panel" id="saved-edit" hidden>
+        <h2>Edit saved clips</h2>
+        <div id="edit-layouts" class="layout-grid"></div>
+        <label>Speaker size<input id="edit-top" type="range" min="20" max="50" value="32"></label>
+        <div class="controls" style="margin-top:14px"><button class="primary" id="apply-video">Apply to all clips of this video</button><button class="secondary" id="apply-one">Only this clip</button><button id="download-bundle">Download video’s clips ZIP</button><a id="bundle-link" hidden download>Download ZIP</a></div>
+      </section>
+
+      <section class="export-bar">
+        <div><b id="status" role="status">Add a video to begin.</b><p id="detail">Your exports stay on this computer and appear in My clips.</p></div>
+        <button id="batch">Export video highlights</button>
+        <button class="primary" id="export">Export clip ↗</button>
+        <a id="download" class="download" hidden download="neoncut-clip.mp4">↓ Download MP4</a>
+        <a id="srt" hidden>↓ Subtitles SRT</a>
+        <a id="vtt" hidden>↓ WebVTT</a>
+      </section>
+    </div>
         <div class="controls"><label>Template<select id="st-template"><option value="none">None (use the layout above)</option><option value="x_light">X post · light</option><option value="x_dark">X post · dark</option><option value="tiktok_hook">TikTok hook</option><option value="breaking_news">Breaking news</option></select></label><label>Name on the card<input id="st-tpl-name" type="text" maxlength="28" placeholder="Your Name"></label><label>@handle<input id="st-tpl-handle" type="text" maxlength="28" placeholder="yourhandle"></label></div>
         <div class="controls"><label>Background<select id="st-bg-mode"><option value="none">None</option><option value="blur">Blurred copy</option><option value="color">Colour</option><option value="gradient">Gradient</option><option value="image">My image</option></select></label><label>Colour<input id="st-bg-color" type="color" value="#0b0912"></label><label>Colour 2<input id="st-bg-color2" type="color" value="#ff4ba5"></label><label class="upload">↑ Background image<input id="st-bg-file" type="file" accept="image/*" hidden></label><span class="muted" id="st-bg-name"></span></div>
         <div class="controls"><label class="upload">↑ Logo / watermark<input id="st-wm-file" type="file" accept="image/*" hidden></label><span class="muted" id="st-wm-name">no logo</span><label>Position<select id="st-wm-pos"><option value="tr">Top-right</option><option value="tl">Top-left</option><option value="br">Bottom-right</option><option value="bl">Bottom-left</option></select></label></div>
