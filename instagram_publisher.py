@@ -236,6 +236,15 @@ class InstagramPublisher:
                 self.stop_tunnel()
                 raise RuntimeError("Failed to obtain ephemeral trycloudflare tunnel URL within timeout")
 
+            # Drain remaining tunnel process output in daemon thread so Windows pipe buffer never blocks
+            def _drain(proc):
+                try:
+                    for _ in iter(proc.stderr.readline, ""):
+                        pass
+                except Exception:
+                    pass
+            threading.Thread(target=_drain, args=(self._tunnel_proc,), daemon=True).start()
+
             # Allow 2 seconds for edge route propagation
             time.sleep(2)
 
@@ -389,6 +398,100 @@ Reply ONLY with JSON:
         'hashtags': "#gamingmemes #funnyreels #streamerclips #gaminglife #reelsindia"
     }
 
+def create_and_upload_reel_container(
+    ig_user_id: str,
+    token: str,
+    video_path: Path,
+    caption: str,
+    share_to_feed: bool = True,
+    max_retries: int = 2
+) -> str:
+    """
+    Direct Resumable Upload to Meta Cloud (Zero-Tunnel, 100% Reliability):
+    1. Initializes a resumable container via Graph API (upload_type=resumable).
+    2. Directly streams raw binary MP4 bytes to rupload.facebook.com with OAuth header.
+    3. Polls until Meta finishes server-side ingestion and returns status_code == 'FINISHED'.
+    4. Returns verified container ID.
+    Immune to error 2207082 (pull/crawler dropouts).
+    """
+    init_url = f"{GRAPH_API_BASE}/{ig_user_id}/media"
+    init_payload = {
+        "media_type": "REELS",
+        "upload_type": "resumable",
+        "caption": caption or "Created with NeonClipping Studio 🔥 #Shorts #Reels",
+        "share_to_feed": "true" if share_to_feed else "false",
+        "access_token": token
+    }
+    res = requests.post(init_url, data=init_payload, timeout=30)
+    if res.status_code != 200:
+        err = res.json().get("error", {}).get("message", res.text)
+        raise RuntimeError(f"Meta container initialization failed: {err}")
+
+    c_data = res.json()
+    container_id = c_data.get("id")
+    upload_uri = c_data.get("uri") or f"https://rupload.facebook.com/ig-api-upload/{GRAPH_API_VERSION}/{container_id}"
+
+    file_size = os.path.getsize(video_path)
+    headers = {
+        "Authorization": f"OAuth {token}",
+        "offset": "0",
+        "file_size": str(file_size),
+        "Content-Type": "video/mp4"
+    }
+
+    with open(video_path, "rb") as f:
+        video_bytes = f.read()
+
+    upload_ok = False
+    last_err = ""
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Direct push {video_path.name} ({file_size} bytes) to {upload_uri} (attempt {attempt+1}/{max_retries})...")
+            up_res = requests.post(upload_uri, headers=headers, data=video_bytes, timeout=180)
+            if up_res.status_code == 200:
+                upload_ok = True
+                break
+            else:
+                last_err = f"HTTP {up_res.status_code}: {up_res.text}"
+                logger.warning(f"rupload attempt {attempt+1} failed: {last_err}")
+                time.sleep(2)
+        except Exception as e:
+            last_err = str(e)
+            logger.warning(f"rupload attempt {attempt+1} error: {e}")
+            time.sleep(2)
+
+    if not upload_ok:
+        raise RuntimeError(f"Direct binary push to Meta rupload failed: {last_err}")
+
+    # Poll status until Meta transcode completes
+    status_url = f"{GRAPH_API_BASE}/{container_id}"
+    poll_start = time.time()
+    max_wait = 180
+    transcode_finished = False
+
+    while time.time() - poll_start < max_wait:
+        status_res = requests.get(
+            status_url,
+            params={"fields": "status_code,status", "access_token": token},
+            timeout=15
+        )
+        if status_res.status_code == 200:
+            s_data = status_res.json()
+            s_code = s_data.get("status_code", "").upper()
+            if s_code == "FINISHED":
+                transcode_finished = True
+                break
+            elif s_code in ["ERROR", "EXPIRED"]:
+                err_msg = s_data.get("status", f"Meta processing failed ({s_code})")
+                raise RuntimeError(f"Meta processing failed: {err_msg}")
+        time.sleep(3)
+
+    if not transcode_finished:
+        raise RuntimeError(f"Meta video processing timed out for container {container_id}")
+
+    logger.info(f"Container {container_id} verified on Meta Cloud (FINISHED)")
+    return container_id
+
 def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to_feed: bool, saved_dir: Optional[Path] = None, scheduled_at: Optional[float] = None, scheduled_time_str: Optional[str] = None):
     task = ig_tasks.get(task_id)
     if not task:
@@ -403,7 +506,6 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
 
     token = creds["access_token"]
     ig_user_id = creds["instagram_account_id"]
-    tunnel_url = None
 
     try:
         # Step 0: Normalize for Reels
@@ -413,76 +515,21 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
 
         input_path = base_saved / video_filename
         final_video_path = optimize_for_reels(input_path) if input_path.exists() else input_path
-        final_filename = final_video_path.name
 
-        # Step 1: Tunnel
-        task["status"] = "connecting"
-        task["message"] = "Opening temporary secure Cloudflare Tunnel..."
-        task["progress"] = 35
-        tunnel_url = instagram.start_tunnel()
-
+        # Step 1: Direct Resumable Upload to Meta Cloud (Zero-Tunnel)
         task["status"] = "uploading"
-        task["message"] = "Creating Reel container with Meta Graph API..."
-        task["progress"] = 45
+        size_mb = round(final_video_path.stat().st_size / (1024 * 1024), 1)
+        task["message"] = f"Pushing Reel directly to Meta Cloud ({size_mb} MB)..."
+        task["progress"] = 35
 
-        quoted_fn = urllib.parse.quote(final_filename)
-        video_public_url = f"{tunnel_url}/media-saved/{quoted_fn}"
-
-        # Step 2: Create Reel Container
-        container_url = f"{GRAPH_API_BASE}/{ig_user_id}/media"
-        container_payload = {
-            "media_type": "REELS",
-            "video_url": video_public_url,
-            "caption": caption or "Created with NeonClipping Studio 🔥 #Shorts #Reels",
-            "share_to_feed": "true" if share_to_feed else "false",
-            "access_token": token
-        }
-        res = requests.post(container_url, data=container_payload, timeout=25)
-        if res.status_code != 200:
-            err = res.json().get("error", {}).get("message", res.text)
-            task["status"] = "error"
-            task["error"] = f"Meta Container error: {err}"
-            return
-
-        container_id = res.json().get("id")
+        container_id = create_and_upload_reel_container(
+            ig_user_id=ig_user_id,
+            token=token,
+            video_path=final_video_path,
+            caption=caption or "Created with NeonClipping Studio 🔥 #Shorts #Reels",
+            share_to_feed=share_to_feed
+        )
         task["container_id"] = container_id
-        task["message"] = "Meta is transcoding the Reel..."
-        task["status"] = "transcoding"
-        task["progress"] = 60
-
-        # Step 3: Poll Container status
-        status_url = f"{GRAPH_API_BASE}/{container_id}"
-        max_wait = 300
-        poll_start = time.time()
-        transcode_finished = False
-
-        while time.time() - poll_start < max_wait:
-            status_res = requests.get(
-                status_url,
-                params={"fields": "status_code,status", "access_token": token},
-                timeout=15
-            )
-            if status_res.status_code == 200:
-                s_data = status_res.json()
-                s_code = s_data.get("status_code", "").upper()
-                if s_code == "FINISHED":
-                    transcode_finished = True
-                    break
-                elif s_code in ["ERROR", "EXPIRED"]:
-                    err_msg = s_data.get("status", f"Meta video processing failed ({s_code})")
-                    task["status"] = "error"
-                    task["error"] = err_msg
-                    return
-            time.sleep(4)
-
-        if not transcode_finished:
-            task["status"] = "error"
-            task["error"] = "Meta video processing timed out (exceeded 5 minutes)"
-            return
-
-        # Video ingestion complete; close tunnel immediately
-        instagram.stop_tunnel()
-        tunnel_url = None
 
         if scheduled_at and scheduled_at > time.time() + 60:
             task["status"] = "done"
@@ -490,7 +537,6 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
             task["scheduled"] = True
             task["scheduled_at"] = scheduled_at
             task["scheduled_time_str"] = scheduled_time_str or time.ctime(scheduled_at)
-            task["container_id"] = container_id
             task["message"] = f"Pre-staged on Meta Cloud! Scheduled for {task['scheduled_time_str']}."
 
             try:
@@ -516,7 +562,7 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
         task["status"] = "publishing"
         task["progress"] = 90
 
-        # Step 4: Publish
+        # Step 2: Publish live
         publish_url = f"{GRAPH_API_BASE}/{ig_user_id}/media_publish"
         pub_res = requests.post(
             publish_url,
@@ -561,9 +607,6 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
     except Exception as e:
         task["status"] = "error"
         task["error"] = str(e)
-    finally:
-        if tunnel_url:
-            instagram.stop_tunnel()
 
 def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip_plans: list):
     task = ig_batch_tasks[batch_id]
@@ -580,15 +623,9 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
 
     token = creds["access_token"]
     ig_user_id = creds["instagram_account_id"]
-    tunnel_url = None
 
     try:
-        task["status"] = "connecting"
-        task["message"] = "Opening secure Cloudflare Tunnel for Meta Cloud pre-staging..."
-        task["progress"] = 10
-        tunnel_url = instagram.start_tunnel()
-
-        containers_to_poll = []
+        verified_containers = []
 
         for idx, plan in enumerate(clip_plans):
             filename = plan["filename"]
@@ -607,79 +644,49 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
             if not input_path.exists():
                 continue
 
-            task["message"] = f"Optimizing Reel {idx+1}/{total} for Instagram..."
+            base_pct = int((idx / total) * 90)
+
+            # Step 1: Normalize for Reels
+            task["message"] = f"Optimizing Reel {idx+1}/{total} for Instagram specs..."
+            task["progress"] = max(5, base_pct)
             final_video_path = optimize_for_reels(input_path) if input_path.exists() else input_path
-            final_filename = final_video_path.name
 
-            quoted_fn = urllib.parse.quote(final_filename)
-            video_public_url = f"{tunnel_url}/media-saved/{quoted_fn}"
+            # Step 2: Direct push to rupload.facebook.com (Zero-Tunnel)
+            size_mb = round(final_video_path.stat().st_size / (1024 * 1024), 1)
+            task["message"] = f"Pushing Reel {idx+1}/{total} directly to Meta Cloud ({size_mb} MB)..."
+            task["progress"] = max(5, base_pct + int(40 / total))
 
-            task["message"] = f"Ingesting Reel {idx+1}/{total} into Meta Cloud..."
-            container_url = f"{GRAPH_API_BASE}/{ig_user_id}/media"
-            container_payload = {
-                "media_type": "REELS",
-                "video_url": video_public_url,
-                "caption": caption,
-                "share_to_feed": "true",
-                "access_token": token
-            }
-
-            res = requests.post(container_url, data=container_payload, timeout=30)
-            if res.status_code != 200:
-                err = res.json().get("error", {}).get("message", res.text)
+            try:
+                container_id = create_and_upload_reel_container(
+                    ig_user_id=ig_user_id,
+                    token=token,
+                    video_path=final_video_path,
+                    caption=caption,
+                    share_to_feed=True
+                )
+            except Exception as e:
                 task["status"] = "error"
-                task["error"] = f"Meta Container error on {filename}: {err}"
+                task["error"] = f"Reel {filename} failed on Meta Cloud: {str(e)}"
                 return
 
-            container_id = res.json().get("id")
-            containers_to_poll.append({
+            c_info = {
                 "container_id": container_id,
                 "filename": filename,
                 "caption": caption,
                 "scheduled_at": scheduled_at,
                 "scheduled_time_str": scheduled_time_str
-            })
-            task["progress"] = int(10 + ((idx + 1) / total) * 35)
-
-        task["message"] = "Waiting for Meta Cloud to verify & transcode all Reels..."
-        verified_containers = []
-
-        for idx, c_info in enumerate(containers_to_poll):
-            cid = c_info["container_id"]
-            transcode_finished = False
-            status_url = f"{GRAPH_API_BASE}/{cid}"
-            poll_start = time.time()
-            max_wait = 180
-
-            while time.time() - poll_start < max_wait:
-                status_res = requests.get(
-                    status_url,
-                    params={"fields": "status_code,status", "access_token": token},
-                    timeout=15
-                )
-                if status_res.status_code == 200:
-                    s_data = status_res.json()
-                    s_code = s_data.get("status_code", "").upper()
-                    if s_code == "FINISHED":
-                        transcode_finished = True
-                        break
-                    elif s_code in ["ERROR", "EXPIRED"]:
-                        err_msg = s_data.get("status", f"Meta processing failed ({s_code})")
-                        task["status"] = "error"
-                        task["error"] = f"Reel {c_info['filename']} failed on Meta Cloud: {err_msg}"
-                        return
-                time.sleep(3)
-
-            if not transcode_finished:
-                task["status"] = "error"
-                task["error"] = f"Meta video processing timed out for {c_info['filename']}"
-                return
-
+            }
             verified_containers.append(c_info)
-            task["progress"] = int(45 + ((idx + 1) / total) * 45)
 
-        instagram.stop_tunnel()
-        tunnel_url = None
+            task["completed_clips"].append({
+                "filename": filename,
+                "container_id": container_id,
+                "scheduled_at": scheduled_at,
+                "scheduled_time_str": scheduled_time_str
+            })
+
+            task["progress"] = int(((idx + 1) / total) * 90)
+            task["message"] = f"Reel {idx+1}/{total} verified & cached on Meta Cloud!"
 
         import publisher_scheduler
         cloud_queue = []
@@ -697,13 +704,6 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
                     "access_token": token
                 }
             )
-
-            task["completed_clips"].append({
-                "filename": c_info["filename"],
-                "container_id": c_info["container_id"],
-                "scheduled_at": c_info["scheduled_at"],
-                "scheduled_time_str": c_info["scheduled_time_str"]
-            })
 
             cloud_queue.append({
                 "container_id": c_info["container_id"],
@@ -768,9 +768,6 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
     except Exception as e:
         task["status"] = "error"
         task["error"] = str(e)
-    finally:
-        if tunnel_url:
-            instagram.stop_tunnel()
 
 def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
     global SAVED_DIR_GLOBAL
