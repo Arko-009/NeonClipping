@@ -290,18 +290,30 @@ def optimize_for_reels(input_path: Path) -> Path:
         return output_path
 
     logger.info(f"Normalizing {input_path.name} for Instagram Reels...")
+    tmp_path = input_path.parent / f"_tmp_norm_{input_path.stem}.mp4"
+    if tmp_path.exists():
+        tmp_path.unlink(missing_ok=True)
+
     cmd = [
         "ffmpeg", "-y", "-i", str(input_path),
         "-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high",
         "-pix_fmt", "yuv420p", "-r", "30", "-g", "60",
         "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
         "-shortest", "-movflags", "+faststart",
-        str(output_path)
+        str(tmp_path)
     ]
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
-    if proc.returncode != 0 or not output_path.exists():
+    if proc.returncode != 0 or not tmp_path.exists() or tmp_path.stat().st_size < 1000:
         logger.warning(f"FFmpeg Reels normalization failed: {proc.stderr[-300:]}, using original file")
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
         return input_path
+
+    try:
+        tmp_path.replace(output_path)
+    except Exception:
+        return tmp_path
+
     logger.info(f"Normalized Reels video created: {output_path.name} ({output_path.stat().st_size} bytes)")
     return output_path
 
@@ -626,6 +638,7 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
 
     try:
         verified_containers = []
+        failed_clips = []
 
         for idx, plan in enumerate(clip_plans):
             filename = plan["filename"]
@@ -665,9 +678,9 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
                     share_to_feed=True
                 )
             except Exception as e:
-                task["status"] = "error"
-                task["error"] = f"Reel {filename} failed on Meta Cloud: {str(e)}"
-                return
+                logger.warning(f"Reel {filename} failed during batch upload: {e}")
+                failed_clips.append({"filename": filename, "error": str(e)})
+                continue
 
             c_info = {
                 "container_id": container_id,
@@ -687,6 +700,12 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
 
             task["progress"] = int(((idx + 1) / total) * 90)
             task["message"] = f"Reel {idx+1}/{total} verified & cached on Meta Cloud!"
+
+        if not verified_containers:
+            task["status"] = "error"
+            err_details = "; ".join([f"{f['filename']}: {f['error']}" for f in failed_clips])
+            task["error"] = f"Failed to pre-stage Reels on Meta Cloud: {err_details}"
+            return
 
         import publisher_scheduler
         cloud_queue = []
@@ -763,7 +782,10 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
 
         task["status"] = "done"
         task["progress"] = 100
-        task["message"] = f"Successfully pre-staged and scheduled all {len(task['completed_clips'])} Reels on Meta Cloud!"
+        if failed_clips:
+            task["message"] = f"Pre-staged {len(task['completed_clips'])}/{total} Reels on Meta Cloud ({len(failed_clips)} failed)!"
+        else:
+            task["message"] = f"Successfully pre-staged and scheduled all {len(task['completed_clips'])} Reels on Meta Cloud!"
 
     except Exception as e:
         task["status"] = "error"
