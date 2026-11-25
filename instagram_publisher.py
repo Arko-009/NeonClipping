@@ -7,6 +7,7 @@ import time
 import threading
 import uuid
 import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Dict, Any, Optional
 import requests
@@ -620,6 +621,139 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
         task["status"] = "error"
         task["error"] = str(e)
 
+def _sync_git_and_push_cloud_queue(root_dir: Path, cloud_queue: list) -> Dict[str, Any]:
+    """
+    Safely merges newly staged containers with the latest origin/main queue,
+    pushes data/ig_cloud_queue.json to GitHub without rebase conflicts, and
+    dispatches the autonomous GitHub Actions runner.
+    """
+    data_dir = root_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    queue_file = data_dir / "ig_cloud_queue.json"
+
+    result: Dict[str, Any] = {"git_pushed": False, "dispatched": False, "error": None}
+    try:
+        # 1. Fetch latest remote state so we never merge against stale local queue edits
+        fetch_res = subprocess.run(
+            ["git", "fetch", "origin", "main"],
+            cwd=str(root_dir), capture_output=True, text=True, timeout=25
+        )
+        if fetch_res.returncode != 0:
+            logger.warning(f"git fetch origin main failed: {fetch_res.stderr.strip()}")
+
+        # 2. Read authoritative queue from origin/main when available
+        base_queue = []
+        show_res = subprocess.run(
+            ["git", "show", "origin/main:data/ig_cloud_queue.json"],
+            cwd=str(root_dir), capture_output=True, text=True, timeout=10
+        )
+        if show_res.returncode == 0 and show_res.stdout.strip():
+            try:
+                base_queue = json.loads(show_res.stdout)
+            except Exception:
+                base_queue = []
+        elif queue_file.exists():
+            try:
+                base_queue = json.loads(queue_file.read_text(encoding="utf-8"))
+            except Exception:
+                base_queue = []
+
+        # 3. Cleanly fast-forward local branch before writing, discarding stale local queue diff
+        st_res = subprocess.run(
+            ["git", "status", "--porcelain", "data/ig_cloud_queue.json"],
+            cwd=str(root_dir), capture_output=True, text=True, timeout=10
+        )
+        if st_res.returncode == 0 and st_res.stdout.strip():
+            subprocess.run(
+                ["git", "checkout", "origin/main", "--", "data/ig_cloud_queue.json"],
+                cwd=str(root_dir), capture_output=True, text=True, timeout=10
+            )
+        ff_res = subprocess.run(
+            ["git", "merge", "--ff-only", "origin/main"],
+            cwd=str(root_dir), capture_output=True, text=True, timeout=15
+        )
+        if ff_res.returncode != 0:
+            rb_res = subprocess.run(
+                ["git", "pull", "--rebase", "origin", "main"],
+                cwd=str(root_dir), capture_output=True, text=True, timeout=25
+            )
+            if rb_res.returncode != 0:
+                logger.warning(f"git pull --rebase failed, aborting rebase: {rb_res.stderr.strip()}")
+                subprocess.run(["git", "rebase", "--abort"], cwd=str(root_dir), capture_output=True, timeout=10)
+
+        # 4. Merge deduplicated by container_id and sort by scheduled_at
+        seen_cids = set()
+        merged_queue = []
+        for item in base_queue + cloud_queue:
+            cid = item.get("container_id")
+            if cid and cid in seen_cids:
+                continue
+            if cid:
+                seen_cids.add(cid)
+            merged_queue.append(item)
+        merged_queue.sort(key=lambda x: x.get("scheduled_at", 0))
+
+        queue_file.write_text(json.dumps(merged_queue, indent=2), encoding="utf-8")
+
+        subprocess.run(
+            ["git", "add", "data/ig_cloud_queue.json"],
+            cwd=str(root_dir), capture_output=True, text=True, timeout=10
+        )
+        diff_res = subprocess.run(
+            ["git", "diff", "--cached", "--quiet", "--", "data/ig_cloud_queue.json"],
+            cwd=str(root_dir), capture_output=True, timeout=10
+        )
+        if diff_res.returncode != 0:
+            commit_res = subprocess.run(
+                ["git", "commit", "-m", "chore(instagram): sync scheduled cloud queue [skip ci]"],
+                cwd=str(root_dir), capture_output=True, text=True, timeout=15
+            )
+            if commit_res.returncode != 0:
+                result["error"] = f"git commit failed: {commit_res.stderr.strip()}"
+                logger.error(result["error"])
+                return result
+
+        push_res = subprocess.run(
+            ["git", "push", "origin", "main"],
+            cwd=str(root_dir), capture_output=True, text=True, timeout=25
+        )
+        if push_res.returncode != 0:
+            result["error"] = f"git push failed: {push_res.stderr.strip()}"
+            logger.error(result["error"])
+            return result
+        result["git_pushed"] = True
+        logger.info(f"Synced {len(merged_queue)} item(s) to origin/main data/ig_cloud_queue.json")
+
+        # 5. Kick off the autonomous GitHub Cloud Dispatcher runner immediately
+        try:
+            cred_p = subprocess.Popen(
+                ['git', 'credential', 'fill'],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            cred_out, _ = cred_p.communicate('protocol=https\nhost=github.com\n\n')
+            pw_lines = [l.split('=', 1)[1].strip() for l in cred_out.splitlines() if l.startswith('password=')]
+            if pw_lines:
+                disp_res = requests.post(
+                    "https://api.github.com/repos/Arko-009/NeonClipping/actions/workflows/instagram_dispatcher.yml/dispatches",
+                    json={"ref": "main"},
+                    headers={
+                        "Authorization": f"token {pw_lines[0]}",
+                        "Accept": "application/vnd.github.v3+json",
+                        "User-Agent": "NeonClipping-Autopilot"
+                    },
+                    timeout=15
+                )
+                result["dispatched"] = disp_res.status_code == 204
+                if not result["dispatched"]:
+                    logger.warning(f"GitHub workflow dispatch returned {disp_res.status_code}: {disp_res.text}")
+        except Exception as e:
+            logger.warning(f"GitHub workflow dispatch failed: {e}")
+    except Exception as e:
+        result["error"] = str(e)
+        logger.error(f"Cloud queue sync failed: {e}")
+    return result
+
+
 def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip_plans: list):
     task = ig_batch_tasks[batch_id]
     task["status"] = "uploading"
@@ -731,59 +865,18 @@ def execute_ig_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip
                 "title": c_info.get("caption", "").splitlines()[0] if c_info.get("caption") else c_info["filename"]
             })
 
-        data_dir = root_dir / "data"
-        data_dir.mkdir(parents=True, exist_ok=True)
-        queue_file = data_dir / "ig_cloud_queue.json"
-        try:
-            existing_queue = []
-            if queue_file.exists():
-                existing_queue = json.loads(queue_file.read_text(encoding="utf-8"))
-            existing_queue.extend(cloud_queue)
-            queue_file.write_text(json.dumps(existing_queue, indent=2), encoding="utf-8")
-
-            # Push cloud queue to GitHub for zero-PC offline dispatching
-            subprocess.run(
-                ["git", "add", "data/ig_cloud_queue.json"],
-                cwd=str(root_dir), capture_output=True, timeout=10
-            )
-            subprocess.run(
-                ["git", "commit", "-m", "chore(instagram): sync scheduled cloud queue [skip ci]"],
-                cwd=str(root_dir), capture_output=True, timeout=10
-            )
-            subprocess.run(
-                ["git", "pull", "--rebase", "origin", "main"],
-                cwd=str(root_dir), capture_output=True, timeout=20
-            )
-            subprocess.run(
-                ["git", "push", "origin", "main"],
-                cwd=str(root_dir), capture_output=True, timeout=20
-            )
-
-            # Kick off the autonomous GitHub Cloud Dispatcher runner immediately
-            try:
-                cred_p = subprocess.Popen(['git', 'credential', 'fill'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                cred_out, _ = cred_p.communicate('protocol=https\nhost=github.com\n\n')
-                gh_token = [l.split('=', 1)[1].strip() for l in cred_out.splitlines() if l.startswith('password=')][0]
-                if gh_token:
-                    requests.post(
-                        "https://api.github.com/repos/Arko-009/NeonClipping/actions/workflows/instagram_dispatcher.yml/dispatches",
-                        json={"ref": "main"},
-                        headers={
-                            "Authorization": f"token {gh_token}",
-                            "Accept": "application/vnd.github.v3+json",
-                            "User-Agent": "NeonClipping-Autopilot"
-                        },
-                        timeout=10
-                    )
-            except Exception:
-                pass
-        except Exception:
-            pass
+        sync_res = _sync_git_and_push_cloud_queue(root_dir, cloud_queue)
+        task["cloud_sync"] = sync_res
 
         task["status"] = "done"
         task["progress"] = 100
         if failed_clips:
             task["message"] = f"Pre-staged {len(task['completed_clips'])}/{total} Reels on Meta Cloud ({len(failed_clips)} failed)!"
+        elif not sync_res.get("git_pushed"):
+            task["message"] = (
+                f"Pre-staged {len(task['completed_clips'])} Reels on Meta Cloud, "
+                f"but GitHub cloud sync failed ({sync_res.get('error')})."
+            )
         else:
             task["message"] = f"Successfully pre-staged and scheduled all {len(task['completed_clips'])} Reels on Meta Cloud!"
 

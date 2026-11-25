@@ -296,9 +296,18 @@ function renderScheduledQueue(platform, items) {
    timeStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   }
   const isErr = item.status === 'error';
-  const statusHtml = isErr 
-    ? `<span class="scheduled-item-time" style="color:#ff4ba5;font-weight:600">⚠️ Meta Blocked: ${item.error ? (item.error.includes('OAuthException') ? 'API access blocked (Need fresh token)' : item.error.slice(0, 45)) : 'Publish failed'}</span>` 
-    : `<span class="scheduled-item-time">⏰ Release: ${timeStr}</span>`;
+  let statusHtml = `<span class="scheduled-item-time">⏰ Release: ${timeStr}</span>`;
+  if (isErr) {
+   const errTxt = item.error || '';
+   const isNetErr = /NameResolutionError|ProxyError|ConnectionError|Max retries exceeded|getaddrinfo failed|timed out|timeout/i.test(errTxt);
+   let errLabel = 'Publish failed';
+   if (errTxt.includes('OAuthException')) errLabel = 'Meta Blocked: API access blocked (Need fresh token)';
+   else if (isNetErr) errLabel = 'Local Network/DNS error (retrying when online)';
+   else if (errTxt) errLabel = 'Meta Error: ' + errTxt.slice(0, 50);
+   statusHtml = `<span class="scheduled-item-time" style="color:#ff4ba5;font-weight:600">⚠️ ${errLabel}</span>`;
+  } else if (item.last_error) {
+   statusHtml = `<span class="scheduled-item-time">⏰ Release: ${timeStr} · <span style="color:#ff9e4b">Retrying network...</span></span>`;
+  }
   left.innerHTML = `<span class="scheduled-item-title" title="${item.title}">${item.title}</span>${statusHtml}`;
   const right = document.createElement('div'); right.className = 'scheduled-item-right';
   const cancelBtn = document.createElement('button'); cancelBtn.className = 'scheduled-cancel-btn'; cancelBtn.textContent = 'Cancel';

@@ -20,13 +20,26 @@ def load_queue():
         print(f"[Dispatcher] Error reading queue: {e}")
         return []
 
-def save_and_push_queue(queue, message="auto-published due Reel [skip ci]"):
+def save_and_push_queue(queue, message="auto-published due Reel [skip ci]", removed_cids=None):
     QUEUE_FILE.write_text(json.dumps(queue, indent=2), encoding="utf-8")
     try:
-        subprocess.run(["git", "add", "data/ig_cloud_queue.json"], cwd=str(ROOT), capture_output=True, timeout=15)
-        subprocess.run(["git", "commit", "-m", f"chore(instagram): {message}"], cwd=str(ROOT), capture_output=True, timeout=15)
-        subprocess.run(["git", "push"], cwd=str(ROOT), capture_output=True, timeout=30)
-        print(f"[Dispatcher] Git sync successful: {message}")
+        subprocess.run(["git", "add", "data/ig_cloud_queue.json"], cwd=str(ROOT), capture_output=True, text=True, timeout=15)
+        subprocess.run(["git", "commit", "-m", f"chore(instagram): {message}"], cwd=str(ROOT), capture_output=True, text=True, timeout=15)
+        rb = subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+        if rb.returncode != 0 and removed_cids:
+            # Re-apply removal cleanly onto latest origin/main if PC pushed new scheduled Reels while runner slept
+            subprocess.run(["git", "rebase", "--abort"], cwd=str(ROOT), capture_output=True, timeout=10)
+            subprocess.run(["git", "fetch", "origin", "main"], cwd=str(ROOT), capture_output=True, timeout=20)
+            subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=str(ROOT), capture_output=True, timeout=15)
+            latest_q = [x for x in load_queue() if x.get("container_id") not in removed_cids]
+            QUEUE_FILE.write_text(json.dumps(latest_q, indent=2), encoding="utf-8")
+            subprocess.run(["git", "add", "data/ig_cloud_queue.json"], cwd=str(ROOT), capture_output=True, timeout=15)
+            subprocess.run(["git", "commit", "-m", f"chore(instagram): {message}"], cwd=str(ROOT), capture_output=True, timeout=15)
+        push_res = subprocess.run(["git", "push", "origin", "main"], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+        if push_res.returncode == 0:
+            print(f"[Dispatcher] Git sync successful: {message}")
+        else:
+            print(f"[Dispatcher] Git push failed: {push_res.stderr.strip()}")
     except Exception as e:
         print(f"[Dispatcher] Git sync warning: {e}")
 
@@ -110,6 +123,8 @@ def main():
     print("=======================================================")
 
     while True:
+        if time.time() - start_time > 30:
+            subprocess.run(["git", "pull", "--ff-only", "origin", "main"], cwd=str(ROOT), capture_output=True, timeout=20)
         queue = load_queue()
         now = time.time()
 
@@ -131,7 +146,7 @@ def main():
                         print(f"[Dispatcher] ⚠️ Failed to publish container {cid}. Keeping in queue for retry.")
             if successful_cids:
                 queue = [x for x in queue if x.get("container_id") not in successful_cids]
-                save_and_push_queue(queue, f"auto-published {len(successful_cids)} Reel(s) [skip ci]")
+                save_and_push_queue(queue, f"auto-published {len(successful_cids)} Reel(s) [skip ci]", removed_cids=successful_cids)
 
         if not queue:
             print("[Dispatcher] 🎉 All clips published! Queue empty. Exiting.")

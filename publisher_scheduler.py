@@ -191,14 +191,32 @@ class PublisherScheduler:
         return items
 
     def cancel_scheduled(self, schedule_id: str) -> bool:
-        data = self._load_data()
-        scheduled = data.get("scheduled", [])
-        initial_len = len(scheduled)
-        data["scheduled"] = [x for x in scheduled if x.get("id") != schedule_id]
-        if len(data["scheduled"]) < initial_len:
-            self._save_data(data)
-            return True
-        return False
+        removed_cid = None
+        with self.lock:
+            try:
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                data = {"history": [], "scheduled": []}
+            scheduled = data.get("scheduled", [])
+            new_scheduled = []
+            found = False
+            for x in scheduled:
+                if x.get("id") == schedule_id:
+                    found = True
+                    if x.get("platform") == "instagram":
+                        removed_cid = x.get("payload", {}).get("container_id")
+                else:
+                    new_scheduled.append(x)
+            if found:
+                data["scheduled"] = new_scheduled
+                temp_file = self.history_file.with_suffix('.tmp')
+                with open(temp_file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2)
+                temp_file.replace(self.history_file)
+        if removed_cid:
+            self._sync_remove_from_cloud_queue(removed_cid)
+        return found
 
     def _sync_remove_from_cloud_queue(self, container_id: str):
         try:
@@ -335,97 +353,273 @@ class PublisherScheduler:
         return pruned_filenames
 
     # ---- BACKGROUND DISPATCHER FOR PRE-STAGED INSTAGRAM POSTS ----
+    @staticmethod
+    def _is_transient_network_error(err: Any) -> bool:
+        if isinstance(err, requests.exceptions.RequestException):
+            return True
+        msg = str(err).lower()
+        return any(tok in msg for tok in (
+            "nameresolutionerror",
+            "getaddrinfo failed",
+            "proxyerror",
+            "connectionerror",
+            "max retries exceeded",
+            "timed out",
+            "timeout",
+            "temporarily unavailable",
+            "connection aborted",
+            "connection reset",
+        ))
+
+    def _record_ig_published(self, item_id: str, permalink: str, published_at: float, meta_extra: Optional[dict] = None) -> Optional[str]:
+        container_id = None
+        with self.lock:
+            try:
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                return None
+            scheduled = data.get("scheduled", [])
+            target = next((x for x in scheduled if x.get("id") == item_id), None)
+            if not target:
+                return None
+            container_id = target.get("payload", {}).get("container_id")
+            meta = {"scheduled": True}
+            if meta_extra:
+                meta.update(meta_extra)
+            data.setdefault("history", []).append({
+                "id": target["id"],
+                "platform": "instagram",
+                "video_filename": target["video_filename"],
+                "title": target["title"],
+                "url": permalink,
+                "status": "published",
+                "created_at": target.get("created_at", published_at),
+                "published_at": published_at,
+                "meta": meta
+            })
+            data["scheduled"] = [x for x in scheduled if x.get("id") != item_id]
+            temp_file = self.history_file.with_suffix('.tmp')
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            temp_file.replace(self.history_file)
+        if container_id:
+            self._sync_remove_from_cloud_queue(container_id)
+        return container_id
+
+    def _remove_scheduled_item(self, item_id: str) -> Optional[str]:
+        container_id = None
+        with self.lock:
+            try:
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                return None
+            scheduled = data.get("scheduled", [])
+            target = next((x for x in scheduled if x.get("id") == item_id), None)
+            if not target:
+                return None
+            container_id = target.get("payload", {}).get("container_id")
+            data["scheduled"] = [x for x in scheduled if x.get("id") != item_id]
+            temp_file = self.history_file.with_suffix('.tmp')
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            temp_file.replace(self.history_file)
+        if container_id:
+            self._sync_remove_from_cloud_queue(container_id)
+        return container_id
+
+    def _update_scheduled_fields(self, item_id: str, updates: Dict[str, Any]) -> None:
+        with self.lock:
+            try:
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                return
+            for x in data.get("scheduled", []):
+                if x.get("id") == item_id:
+                    x.update(updates)
+                    break
+            else:
+                return
+            temp_file = self.history_file.with_suffix('.tmp')
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            temp_file.replace(self.history_file)
+
+    def _lookup_recent_reel_permalink(self, ig_user_id: str, token: str, scheduled_at: float, title: str) -> str:
+        fallback = "https://www.instagram.com/"
+        first_line = (title or "").splitlines()[0].strip()
+        try:
+            r = requests.get(
+                f"https://graph.facebook.com/v21.0/{ig_user_id}/media",
+                params={"fields": "id,caption,permalink,timestamp", "limit": 15, "access_token": token},
+                timeout=10
+            )
+            if r.status_code != 200:
+                return fallback
+            for m in r.json().get("data", []):
+                cap_first = (m.get("caption") or "").splitlines()[0].strip() if m.get("caption") else ""
+                if first_line and cap_first and cap_first == first_line:
+                    return m.get("permalink") or fallback
+            for m in r.json().get("data", []):
+                ts = m.get("timestamp")
+                if ts and scheduled_at:
+                    try:
+                        dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        if abs(dt.timestamp() - scheduled_at) <= 180:
+                            return m.get("permalink") or fallback
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return fallback
+
+    def _process_instagram_item(self, item: Dict[str, Any], now: float) -> None:
+        status = item.get("status")
+        if status not in ("scheduled", "error"):
+            return
+        if status == "scheduled" and item.get("scheduled_at", 0) > now:
+            return
+        if now < item.get("retry_after", 0):
+            return
+
+        payload = item.get("payload", {})
+        container_id = payload.get("container_id")
+        ig_user_id = payload.get("ig_user_id")
+        token = payload.get("access_token")
+        if not (container_id and ig_user_id and token):
+            return
+
+        item_id = item["id"]
+        try:
+            # 1. Always inspect container status first so cloud-published or expired items reconcile cleanly
+            st_res = requests.get(
+                f"https://graph.facebook.com/v21.0/{container_id}",
+                params={"fields": "id,status,status_code", "access_token": token},
+                timeout=15
+            )
+            container_state = ""
+            if st_res.status_code == 200:
+                s_data = st_res.json()
+                container_state = (s_data.get("status_code") or "").upper()
+                if container_state == "PUBLISHED":
+                    permalink = self._lookup_recent_reel_permalink(
+                        ig_user_id, token, item.get("scheduled_at", now), item.get("title", "")
+                    )
+                    self._record_ig_published(
+                        item_id,
+                        permalink,
+                        item.get("scheduled_at", now),
+                        meta_extra={"source": "cloud_dispatcher"}
+                    )
+                    print(f"[Scheduler] Reconciled already-published Instagram container {container_id}: {permalink}")
+                    return
+                if container_state == "EXPIRED":
+                    self._remove_scheduled_item(item_id)
+                    print(f"[Scheduler] Container expired on Meta Cloud: {container_id}")
+                    return
+                if container_state == "ERROR":
+                    self._update_scheduled_fields(item_id, {
+                        "status": "error",
+                        "error": s_data.get("status", "Meta container processing failed"),
+                        "retry_after": now + 300
+                    })
+                    return
+
+            # Only publish due items (or items previously marked error due to a transient local network failure)
+            can_retry_publish = (status == "scheduled") or (
+                status == "error" and self._is_transient_network_error(item.get("error", ""))
+            )
+            if not can_retry_publish:
+                self._update_scheduled_fields(item_id, {"retry_after": now + 300})
+                return
+
+            print(f"[Scheduler] Firing scheduled Instagram publish for container {container_id}...")
+            pub_res = requests.post(
+                f"https://graph.facebook.com/v21.0/{ig_user_id}/media_publish",
+                data={"creation_id": container_id, "access_token": token},
+                timeout=25
+            )
+            if pub_res.status_code == 200:
+                media_id = pub_res.json().get("id")
+                permalink = f"https://www.instagram.com/reel/{media_id}/"
+                try:
+                    p_res = requests.get(
+                        f"https://graph.facebook.com/v21.0/{media_id}",
+                        params={"fields": "permalink", "access_token": token},
+                        timeout=10
+                    )
+                    if p_res.status_code == 200:
+                        permalink = p_res.json().get("permalink", permalink)
+                except Exception:
+                    pass
+                self._record_ig_published(item_id, permalink, time.time(), meta_extra={"media_id": media_id})
+                print(f"[Scheduler] Scheduled Instagram publish SUCCESS: {permalink}")
+            else:
+                err = pub_res.text
+                err_lower = err.lower()
+                if "already published" in err_lower or "has been published" in err_lower or "already been published" in err_lower:
+                    permalink = self._lookup_recent_reel_permalink(
+                        ig_user_id, token, item.get("scheduled_at", now), item.get("title", "")
+                    )
+                    self._record_ig_published(
+                        item_id,
+                        permalink,
+                        item.get("scheduled_at", now),
+                        meta_extra={"source": "cloud_dispatcher"}
+                    )
+                    print(f"[Scheduler] Container was already published by Cloud Dispatcher: {container_id}")
+                elif "expired" in err_lower:
+                    self._remove_scheduled_item(item_id)
+                    print(f"[Scheduler] Container expired on Meta Cloud: {container_id}")
+                elif pub_res.status_code >= 500:
+                    self._update_scheduled_fields(item_id, {
+                        "status": "scheduled",
+                        "last_error": err,
+                        "retry_after": now + 60
+                    })
+                    print(f"[Scheduler] Transient Meta {pub_res.status_code} for {container_id}, will retry: {err}")
+                else:
+                    self._update_scheduled_fields(item_id, {
+                        "status": "error",
+                        "error": err,
+                        "retry_after": now + 300
+                    })
+                    print(f"[Scheduler] Scheduled Instagram publish failed: {err}")
+        except Exception as e:
+            if self._is_transient_network_error(e):
+                # Keep status='scheduled' so recovery happens automatically when PC regains connectivity
+                updates: Dict[str, Any] = {
+                    "last_error": str(e),
+                    "retry_after": now + 60
+                }
+                if status == "error":
+                    updates["status"] = "scheduled"
+                    updates["error"] = None
+                self._update_scheduled_fields(item_id, updates)
+                print(f"[Scheduler] Transient network error for {container_id}, retrying in 60s: {e}")
+            else:
+                self._update_scheduled_fields(item_id, {
+                    "status": "error",
+                    "error": str(e),
+                    "retry_after": now + 300
+                })
+                print(f"[Scheduler] Exception firing Instagram publish: {e}")
+
+    def _poll_once(self) -> None:
+        now = time.time()
+        data = self._load_data()
+        for item in list(data.get("scheduled", [])):
+            if item.get("platform") == "instagram":
+                self._process_instagram_item(item, now)
+
     def _background_poll(self):
         while self._worker_running:
             try:
-                now = time.time()
-                data = self._load_data()
-                scheduled = data.get("scheduled", [])
-                modified = False
-
-                for item in list(scheduled):
-                    if item.get("platform") == "instagram" and item.get("status") == "scheduled":
-                        if item.get("scheduled_at", 0) <= now:
-                            payload = item.get("payload", {})
-                            container_id = payload.get("container_id")
-                            ig_user_id = payload.get("ig_user_id")
-                            token = payload.get("access_token")
-                            
-                            if container_id and ig_user_id and token:
-                                print(f"[Scheduler] Firing scheduled Instagram publish for container {container_id}...")
-                                try:
-                                    pub_res = requests.post(
-                                        f"https://graph.facebook.com/v21.0/{ig_user_id}/media_publish",
-                                        data={"creation_id": container_id, "access_token": token},
-                                        timeout=25
-                                    )
-                                    if pub_res.status_code == 200:
-                                        media_id = pub_res.json().get("id")
-                                        permalink = f"https://www.instagram.com/reel/{media_id}/"
-                                        item["status"] = "published"
-                                        item["published_at"] = time.time()
-                                        item["permalink"] = permalink
-                                        data.setdefault("history", []).append({
-                                            "id": item["id"],
-                                            "platform": "instagram",
-                                            "video_filename": item["video_filename"],
-                                            "title": item["title"],
-                                            "url": permalink,
-                                            "status": "published",
-                                            "created_at": item["created_at"],
-                                            "published_at": time.time(),
-                                            "meta": {"scheduled": True}
-                                        })
-                                        scheduled.remove(item)
-                                        modified = True
-                                        print(f"[Scheduler] Scheduled Instagram publish SUCCESS: {permalink}")
-                                        self._sync_remove_from_cloud_queue(container_id)
-                                    else:
-                                        err = pub_res.text
-                                        err_lower = err.lower()
-                                        if "already published" in err_lower or "has been published" in err_lower or "already been published" in err_lower:
-                                            permalink = f"https://www.instagram.com/"
-                                            item["status"] = "published"
-                                            item["published_at"] = item.get("scheduled_at", time.time())
-                                            item["permalink"] = permalink
-                                            data.setdefault("history", []).append({
-                                                "id": item["id"],
-                                                "platform": "instagram",
-                                                "video_filename": item["video_filename"],
-                                                "title": item["title"],
-                                                "url": permalink,
-                                                "status": "published",
-                                                "created_at": item["created_at"],
-                                                "published_at": item.get("scheduled_at", time.time()),
-                                                "meta": {"scheduled": True, "source": "cloud_dispatcher"}
-                                            })
-                                            scheduled.remove(item)
-                                            modified = True
-                                            print(f"[Scheduler] Container was already published by Cloud Dispatcher: {container_id}")
-                                            self._sync_remove_from_cloud_queue(container_id)
-                                        elif "expired" in err_lower:
-                                            item["status"] = "expired"
-                                            scheduled.remove(item)
-                                            modified = True
-                                            print(f"[Scheduler] Container expired on Meta Cloud: {container_id}")
-                                            self._sync_remove_from_cloud_queue(container_id)
-                                        else:
-                                            item["status"] = "error"
-                                            item["error"] = err
-                                            modified = True
-                                            print(f"[Scheduler] Scheduled Instagram publish failed: {err}")
-                                except Exception as e:
-                                    item["status"] = "error"
-                                    item["error"] = str(e)
-                                    modified = True
-                                    print(f"[Scheduler] Exception firing Instagram publish: {e}")
-
-                if modified:
-                    self._save_data(data)
-
-            except Exception as e:
+                self._poll_once()
+            except Exception:
                 pass
-
             time.sleep(15)
 
 scheduler = PublisherScheduler()
