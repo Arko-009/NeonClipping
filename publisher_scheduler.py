@@ -371,8 +371,19 @@ class PublisherScheduler:
             "connection reset",
         ))
 
+    def _cleanup_ig_norm_cache(self, video_filename: Optional[str]) -> None:
+        if not video_filename or not self.saved_dir:
+            return
+        try:
+            norm_path = Path(self.saved_dir) / f"_ig_norm_{Path(video_filename).stem}.mp4"
+            if norm_path.exists():
+                norm_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
     def _record_ig_published(self, item_id: str, permalink: str, published_at: float, meta_extra: Optional[dict] = None) -> Optional[str]:
         container_id = None
+        video_filename = None
         with self.lock:
             try:
                 with open(self.history_file, 'r', encoding='utf-8') as f:
@@ -384,13 +395,14 @@ class PublisherScheduler:
             if not target:
                 return None
             container_id = target.get("payload", {}).get("container_id")
+            video_filename = target.get("video_filename")
             meta = {"scheduled": True}
             if meta_extra:
                 meta.update(meta_extra)
             data.setdefault("history", []).append({
                 "id": target["id"],
                 "platform": "instagram",
-                "video_filename": target["video_filename"],
+                "video_filename": video_filename,
                 "title": target["title"],
                 "url": permalink,
                 "status": "published",
@@ -405,10 +417,12 @@ class PublisherScheduler:
             temp_file.replace(self.history_file)
         if container_id:
             self._sync_remove_from_cloud_queue(container_id)
+        self._cleanup_ig_norm_cache(video_filename)
         return container_id
 
     def _remove_scheduled_item(self, item_id: str) -> Optional[str]:
         container_id = None
+        video_filename = None
         with self.lock:
             try:
                 with open(self.history_file, 'r', encoding='utf-8') as f:
@@ -420,6 +434,7 @@ class PublisherScheduler:
             if not target:
                 return None
             container_id = target.get("payload", {}).get("container_id")
+            video_filename = target.get("video_filename")
             data["scheduled"] = [x for x in scheduled if x.get("id") != item_id]
             temp_file = self.history_file.with_suffix('.tmp')
             with open(temp_file, 'w', encoding='utf-8') as f:
@@ -427,6 +442,7 @@ class PublisherScheduler:
             temp_file.replace(self.history_file)
         if container_id:
             self._sync_remove_from_cloud_queue(container_id)
+        self._cleanup_ig_norm_cache(video_filename)
         return container_id
 
     def _update_scheduled_fields(self, item_id: str, updates: Dict[str, Any]) -> None:

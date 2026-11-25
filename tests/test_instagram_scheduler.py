@@ -6,7 +6,13 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import requests
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 import instagram_publisher
+import publisher_scheduler
+import youtube_uploader
+from scripts import dispatch_instagram
 from publisher_scheduler import PublisherScheduler
 
 
@@ -168,6 +174,118 @@ class InstagramSchedulerTests(unittest.TestCase):
         self.assertTrue(out["dispatched"])
         written = json.loads((root / "data" / "ig_cloud_queue.json").read_text(encoding="utf-8"))
         self.assertEqual([x["container_id"] for x in written], ["c1", "c2"])
+
+    def test_sync_git_preserves_unpushed_head_queue_items(self):
+        root = Path(self.tmp.name)
+        (root / "data").mkdir(parents=True, exist_ok=True)
+        now = time.time()
+        remote_items = []
+        unpushed_items = [{"container_id": "c_unpushed", "scheduled_at": now + 1800}]
+        new_items = [{"container_id": "c_new", "scheduled_at": now + 3600}]
+
+        def fake_run(cmd, **kwargs):
+            res = MagicMock(returncode=0, stdout="", stderr="")
+            if cmd[:3] == ["git", "show", "origin/main:data/ig_cloud_queue.json"]:
+                res.stdout = json.dumps(remote_items)
+            elif cmd[:3] == ["git", "rev-list", "--count"]:
+                res.stdout = "1\n"
+            elif cmd[:3] == ["git", "show", "HEAD:data/ig_cloud_queue.json"]:
+                res.stdout = json.dumps(unpushed_items)
+            elif cmd[:3] == ["git", "diff", "--cached"]:
+                res.returncode = 1
+            return res
+
+        cred_proc = MagicMock()
+        cred_proc.communicate.return_value = ("password=ghp_test\n", "")
+        disp_resp = MagicMock(status_code=204)
+
+        with patch("instagram_publisher.subprocess.run", side_effect=fake_run), \
+             patch("instagram_publisher.subprocess.Popen", return_value=cred_proc), \
+             patch("instagram_publisher.requests.post", return_value=disp_resp):
+            out = instagram_publisher._sync_git_and_push_cloud_queue(root, new_items)
+
+        self.assertTrue(out["git_pushed"])
+        written = json.loads((root / "data" / "ig_cloud_queue.json").read_text(encoding="utf-8"))
+        self.assertEqual([x["container_id"] for x in written], ["c_unpushed", "c_new"])
+
+    def test_record_ig_published_cleans_norm_cache_only(self):
+        orig = self.saved_dir / "clip1.mp4"
+        norm = self.saved_dir / "_ig_norm_clip1.mp4"
+        orig.write_bytes(b"original")
+        norm.write_bytes(b"normalized")
+        item = self.sched.add_scheduled(
+            "instagram",
+            "clip1.mp4",
+            "Clip 1",
+            time.time() - 5,
+            "Now",
+            {"container_id": "c1", "ig_user_id": "u1", "access_token": "tok"},
+        )
+        self.sched._record_ig_published(item["id"], "https://www.instagram.com/reel/1/", time.time())
+        self.assertTrue(orig.exists())
+        self.assertFalse(norm.exists())
+
+    def test_youtube_proxy_check_does_not_pollute_global_environ(self):
+        import os
+        os.environ.pop("HTTP_PROXY", None)
+        os.environ.pop("HTTPS_PROXY", None)
+        with patch("youtube_uploader._is_local_proxy_active", return_value=True), \
+             patch("youtube_uploader.build") as mock_build:
+            youtube_uploader._build_youtube_service(MagicMock())
+            self.assertTrue(mock_build.called)
+        self.assertNotIn("HTTP_PROXY", os.environ)
+        self.assertNotIn("HTTPS_PROXY", os.environ)
+
+    def test_preview_non_overlapping_and_respects_24h_ttl(self):
+        # Create 3 dummy unposted clips in temp Saved dir
+        for idx in range(3):
+            (self.saved_dir / f"clip{idx} - id{idx:04d}.mp4").write_bytes(b"123456")
+
+        now = time.time()
+        # Existing scheduled IG reel is 20h from now; next 2h gap slot (22h) fits within 23h cap, 24h does not!
+        self.sched.add_scheduled(
+            "instagram",
+            "already - 000000.mp4",
+            "Already",
+            now + 20 * 3600,
+            "Future",
+            {"container_id": "c0", "ig_user_id": "u1", "access_token": "tok"},
+        )
+
+        app = FastAPI()
+        orig_sched = publisher_scheduler.scheduler
+        publisher_scheduler.scheduler = self.sched
+        self.addCleanup(setattr, publisher_scheduler, "scheduler", orig_sched)
+        instagram_publisher.attach(app, Path(self.tmp.name), self.saved_dir)
+        client = TestClient(app)
+
+        res = client.get("/instagram/auto-schedule-preview?gap_hours=2&count=10")
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertTrue(body["ttl_capped"])
+        self.assertEqual(body["count"], 1)
+        self.assertGreater(body["clips"][0]["scheduled_at"], now + 21.5 * 3600)
+
+        bad_batch = client.post("/instagram/auto-schedule-batch", json={
+            "clips": [{"filename": "clip0 - id0000.mp4", "scheduled_at": now + 25 * 3600}]
+        })
+        self.assertEqual(bad_batch.status_code, 400)
+
+    def test_dispatcher_sleeps_budget_before_handoff_on_long_wait(self):
+        slept = []
+        spawned = []
+        now = time.time()
+        q = [{"container_id": "c_far", "scheduled_at": now + 8 * 3600, "scheduled_time_str": "Later", "title": "Far"}]
+
+        with patch.object(dispatch_instagram, "load_queue", return_value=q), \
+             patch.object(dispatch_instagram, "_sleep_with_heartbeats", side_effect=lambda s, *a, **kw: slept.append(s) or False), \
+             patch.object(dispatch_instagram, "spawn_next_runner", side_effect=lambda *a: spawned.append(a) or True), \
+             patch.dict("os.environ", {"IG_ACCESS_TOKEN": "tok", "IG_USER_ID": "u1", "GH_PAT": "pat"}, clear=False):
+            dispatch_instagram.main()
+
+        self.assertEqual(len(spawned), 1)
+        self.assertEqual(len(slept), 1)
+        self.assertGreater(slept[0], 4 * 3600)
 
 
 if __name__ == "__main__":

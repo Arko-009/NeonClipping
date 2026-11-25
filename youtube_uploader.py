@@ -1,8 +1,12 @@
 import os
 import json
+import socket
 import time
 import threading
 from pathlib import Path
+import httplib2
+import requests as _requests
+import google_auth_httplib2
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
@@ -12,15 +16,32 @@ from googleapiclient.errors import HttpError
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-try:
-    import socket
-    with socket.create_connection(('127.0.0.1', 18888), timeout=0.3):
-        os.environ['HTTP_PROXY'] = 'http://127.0.0.1:18888'
-        os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:18888'
-        os.environ['NO_PROXY'] = '127.0.0.1,localhost'
-except Exception:
-    for _k in ('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy'):
-        os.environ.pop(_k, None)
+_LOCAL_PROXY_HOST = '127.0.0.1'
+_LOCAL_PROXY_PORT = 18888
+
+def _is_local_proxy_active() -> bool:
+    try:
+        with socket.create_connection((_LOCAL_PROXY_HOST, _LOCAL_PROXY_PORT), timeout=0.2):
+            return True
+    except Exception:
+        return False
+
+def _make_auth_request() -> Request:
+    if _is_local_proxy_active():
+        sess = _requests.Session()
+        proxy_url = f'http://{_LOCAL_PROXY_HOST}:{_LOCAL_PROXY_PORT}'
+        sess.proxies = {'http': proxy_url, 'https': proxy_url}
+        return Request(session=sess)
+    return Request()
+
+def _build_youtube_service(creds):
+    """Builds YouTube v3 client with scoped proxy only when active, avoiding global os.environ pollution."""
+    if _is_local_proxy_active():
+        proxy_info = httplib2.ProxyInfo(httplib2.socks.PROXY_TYPE_HTTP, _LOCAL_PROXY_HOST, _LOCAL_PROXY_PORT)
+        http = httplib2.Http(proxy_info=proxy_info)
+        authed_http = google_auth_httplib2.AuthorizedHttp(creds, http=http)
+        return build('youtube', 'v3', http=authed_http)
+    return build('youtube', 'v3', credentials=creds)
 
 SCOPES = [
     'https://www.googleapis.com/auth/youtube.upload',
@@ -48,7 +69,7 @@ def get_credentials(root_dir: Path):
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
-                creds.refresh(Request())
+                creds.refresh(_make_auth_request())
                 with open(token_file, 'w', encoding='utf-8') as f:
                     f.write(creds.to_json())
             except Exception:
@@ -57,7 +78,7 @@ def get_credentials(root_dir: Path):
 
 def get_channel_info(creds):
     try:
-        service = build('youtube', 'v3', credentials=creds)
+        service = _build_youtube_service(creds)
         res = service.channels().list(part='snippet,statistics', mine=True).execute()
         items = res.get('items', [])
         if not items:
@@ -97,7 +118,7 @@ def execute_upload(task_id: str, root_dir: Path, video_path: Path, title: str, d
             task['error'] = 'Not authenticated. Please connect your YouTube account first.'
             return
 
-        service = build('youtube', 'v3', credentials=creds)
+        service = _build_youtube_service(creds)
 
         status_body = {
             'selfDeclaredMadeForKids': False
@@ -203,7 +224,7 @@ def execute_batch_upload(batch_id: str, root_dir: Path, saved_dir: Path, clip_pl
             task['error'] = 'Not authenticated. Please connect your YouTube account first.'
             return
 
-        service = build('youtube', 'v3', credentials=creds)
+        service = _build_youtube_service(creds)
 
         for idx, plan in enumerate(clip_plans):
             task['current_index'] = idx + 1

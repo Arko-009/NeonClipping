@@ -478,6 +478,8 @@ window.loadIgBatchPreview = async function(gapHours = 2) {
    empty.className = 'empty-queue-msg';
    if (res.remaining_quota === 0) {
     empty.textContent = '24-hour velocity limit is reached (0/50 remaining). Please wait a few hours.';
+   } else if (res.ttl_blocked) {
+    empty.textContent = 'Current Meta Cloud queue already fills the next 23h (Meta containers expire after 24h). Wait for earlier Reels to publish before staging more.';
    } else {
     empty.textContent = 'All clips in your Saved folder have already been uploaded or scheduled!';
    }

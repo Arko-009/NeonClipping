@@ -185,7 +185,14 @@ class InstagramPublisher:
         }
         self.save_credentials(creds)
         logger.info(f"Successfully connected Instagram: @{ig_username} (ID: {ig_id})")
-        return {"status": "connected", "username": ig_username, "account_id": ig_id, "page_name": page_name}
+        gh_synced = _sync_github_ig_secrets(creds["access_token"], ig_id)
+        return {
+            "status": "connected",
+            "username": ig_username,
+            "account_id": ig_id,
+            "page_name": page_name,
+            "github_secrets_synced": gh_synced,
+        }
 
     def disconnect(self) -> None:
         if self.creds_path.exists():
@@ -621,11 +628,57 @@ def execute_ig_publish(task_id: str, video_filename: str, caption: str, share_to
         task["status"] = "error"
         task["error"] = str(e)
 
+def _sync_github_ig_secrets(ig_token: str, ig_user_id: str, repo_name: str = "Arko-009/NeonClipping") -> bool:
+    """Best-effort sync of IG_ACCESS_TOKEN and IG_USER_ID to GitHub Actions secrets when account connects."""
+    try:
+        from nacl import encoding as nacl_encoding, public as nacl_public
+        import base64
+        cred_p = subprocess.Popen(
+            ['git', 'credential', 'fill'],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        cred_out, _ = cred_p.communicate('protocol=https\nhost=github.com\n\n')
+        pw_lines = [l.split('=', 1)[1].strip() for l in cred_out.splitlines() if l.startswith('password=')]
+        if not pw_lines:
+            return False
+        headers = {
+            "Authorization": f"token {pw_lines[0]}",
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "NeonClipping-Autopilot"
+        }
+        pk_res = requests.get(
+            f"https://api.github.com/repos/{repo_name}/actions/secrets/public-key",
+            headers=headers, timeout=15
+        )
+        if pk_res.status_code != 200:
+            logger.warning(f"GitHub secrets public-key fetch failed: {pk_res.status_code}")
+            return False
+        pk_data = pk_res.json()
+        pub_key = nacl_public.PublicKey(pk_data["key"].encode("utf-8"), nacl_encoding.Base64Encoder())
+        box = nacl_public.SealedBox(pub_key)
+
+        for secret_name, secret_val in (("IG_ACCESS_TOKEN", ig_token), ("IG_USER_ID", ig_user_id)):
+            enc = base64.b64encode(box.encrypt(secret_val.encode("utf-8"))).decode("utf-8")
+            put_res = requests.put(
+                f"https://api.github.com/repos/{repo_name}/actions/secrets/{secret_name}",
+                json={"encrypted_value": enc, "key_id": pk_data["key_id"]},
+                headers=headers, timeout=15
+            )
+            if put_res.status_code not in (201, 204):
+                logger.warning(f"Failed updating GitHub secret {secret_name}: {put_res.status_code}")
+                return False
+        logger.info("Synced IG_ACCESS_TOKEN & IG_USER_ID to GitHub Actions secrets")
+        return True
+    except Exception as e:
+        logger.warning(f"GitHub secret sync skipped: {e}")
+        return False
+
+
 def _sync_git_and_push_cloud_queue(root_dir: Path, cloud_queue: list) -> Dict[str, Any]:
     """
-    Safely merges newly staged containers with the latest origin/main queue,
-    pushes data/ig_cloud_queue.json to GitHub without rebase conflicts, and
-    dispatches the autonomous GitHub Actions runner.
+    Safely merges newly staged containers with the latest origin/main queue
+    (and any unpushed local commits), pushes data/ig_cloud_queue.json to GitHub
+    without rebase conflicts, and dispatches the autonomous GitHub Actions runner.
     """
     data_dir = root_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -641,7 +694,7 @@ def _sync_git_and_push_cloud_queue(root_dir: Path, cloud_queue: list) -> Dict[st
         if fetch_res.returncode != 0:
             logger.warning(f"git fetch origin main failed: {fetch_res.stderr.strip()}")
 
-        # 2. Read authoritative queue from origin/main when available
+        # 2. Read authoritative queue from origin/main AND preserve any unpushed local HEAD batches
         base_queue = []
         show_res = subprocess.run(
             ["git", "show", "origin/main:data/ig_cloud_queue.json"],
@@ -657,6 +710,24 @@ def _sync_git_and_push_cloud_queue(root_dir: Path, cloud_queue: list) -> Dict[st
                 base_queue = json.loads(queue_file.read_text(encoding="utf-8"))
             except Exception:
                 base_queue = []
+
+        unpushed_res = subprocess.run(
+            ["git", "rev-list", "--count", "origin/main..HEAD"],
+            cwd=str(root_dir), capture_output=True, text=True, timeout=10
+        )
+        if unpushed_res.returncode == 0 and int((unpushed_res.stdout or "0").strip() or "0") > 0:
+            head_show = subprocess.run(
+                ["git", "show", "HEAD:data/ig_cloud_queue.json"],
+                cwd=str(root_dir), capture_output=True, text=True, timeout=10
+            )
+            if head_show.returncode == 0 and head_show.stdout.strip():
+                try:
+                    cutoff = time.time() - 3600
+                    for item in json.loads(head_show.stdout):
+                        if item.get("scheduled_at", 0) >= cutoff:
+                            base_queue.append(item)
+                except Exception:
+                    pass
 
         # 3. Cleanly fast-forward local branch before writing, discarding stale local queue diff
         st_res = subprocess.run(
@@ -999,14 +1070,34 @@ def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
         planned = []
         import datetime
         now_dt = datetime.datetime.now(datetime.timezone.utc)
-        start_dt = (now_dt + datetime.timedelta(hours=gap_hours)).replace(minute=0, second=0, microsecond=0)
-        if (start_dt - now_dt).total_seconds() < 3600:
-            start_dt += datetime.timedelta(hours=1)
+        now_ts = now_dt.timestamp()
+        max_container_ttl_seconds = 23 * 3600  # Meta REELS containers expire at 24h; enforce 23h safety cap
 
+        latest_ig_ts = max(
+            (
+                x.get('scheduled_at', 0)
+                for x in data.get('scheduled', [])
+                if x.get('platform') == 'instagram'
+                and x.get('status') == 'scheduled'
+                and x.get('scheduled_at', 0) > now_ts
+            ),
+            default=0,
+        )
+        if latest_ig_ts > now_ts:
+            start_dt = datetime.datetime.fromtimestamp(latest_ig_ts, tz=datetime.timezone.utc) + datetime.timedelta(hours=gap_hours)
+        else:
+            start_dt = (now_dt + datetime.timedelta(hours=gap_hours)).replace(minute=0, second=0, microsecond=0)
+            if (start_dt - now_dt).total_seconds() < 3600:
+                start_dt += datetime.timedelta(hours=1)
+
+        ttl_capped = False
         for i in range(max_to_schedule):
             clip = unposted[i]
             target_dt = start_dt + datetime.timedelta(hours=i * gap_hours)
             target_ts = target_dt.timestamp()
+            if target_ts - now_ts > max_container_ttl_seconds:
+                ttl_capped = True
+                break
             local_dt = target_dt.astimezone()
             local_str = local_dt.strftime('%b %d, %I:%M %p')
             size_mb = round(clip['size_bytes'] / (1024 * 1024), 1)
@@ -1020,11 +1111,14 @@ def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
                 'scheduled_time_str': local_str
             })
 
+        ttl_blocked = ttl_capped and len(planned) == 0 and len(unposted) > 0 and remaining_slots > 0
         return {
             'quota': quota,
-            'can_schedule': remaining_slots > 0 and len(unposted) > 0,
+            'can_schedule': remaining_slots > 0 and len(planned) > 0,
             'remaining_quota': remaining_slots,
             'unposted_total': len(unposted),
+            'ttl_capped': ttl_capped,
+            'ttl_blocked': ttl_blocked,
             'count': len(planned),
             'clips': planned
         }
@@ -1033,6 +1127,15 @@ def attach(app, ROOT_DIR: Path, SAVED_DIR: Path):
     def ig_auto_schedule_batch(req: IgBatchScheduleReq):
         if not req.clips:
             raise HTTPException(400, "No clips provided for batch schedule")
+
+        now_ts = time.time()
+        for clip in req.clips:
+            sched_at = clip.get('scheduled_at') or 0
+            if sched_at - now_ts > 23.5 * 3600:
+                raise HTTPException(
+                    400,
+                    f"Clip '{clip.get('filename', 'Reel')}' is scheduled more than 23.5h ahead; Meta containers expire after 24h."
+                )
 
         import publisher_scheduler
         quota = publisher_scheduler.scheduler.get_instagram_quota()

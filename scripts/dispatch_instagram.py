@@ -96,6 +96,30 @@ def publish_container(container_id, ig_user_id, token, item):
         print(f"[Dispatcher] Exception publishing container {container_id}: {e}")
         return False
 
+def _sleep_with_heartbeats(wait_seconds, label, check_remote_updates=True):
+    """Sleeps up to wait_seconds in 60s chunks, pulling origin/main every 15m to detect newly scheduled earlier items."""
+    print(f"[Dispatcher] Entering precision cloud sleep for {wait_seconds} seconds ({wait_seconds//60} mins)...")
+    remaining_sleep = max(0, int(wait_seconds))
+    slept = 0
+    while remaining_sleep > 0:
+        step = min(60, remaining_sleep)
+        time.sleep(step)
+        remaining_sleep -= step
+        slept += step
+        mins_left = remaining_sleep // 60
+        if mins_left % 15 == 0 and remaining_sleep > 60:
+            print(f"[Dispatcher Heartbeat] {mins_left}m remaining until '{label}' drops...")
+            if check_remote_updates:
+                prev_q = load_queue()
+                pull = subprocess.run(["git", "pull", "--ff-only", "origin", "main"], cwd=str(ROOT), capture_output=True, timeout=20)
+                if pull.returncode == 0:
+                    new_q = load_queue()
+                    if len(new_q) != len(prev_q):
+                        print("[Dispatcher] Remote queue updated during sleep; re-evaluating schedule immediately.")
+                        return True
+    return False
+
+
 def main():
     start_time = time.time()
     token = os.environ.get("IG_ACCESS_TOKEN")
@@ -162,9 +186,15 @@ def main():
         print(f"[Dispatcher] Pending queue: {len(queue)} clips.")
         print(f"[Dispatcher] Next Reel: '{next_item.get('title')}' scheduled for {next_item.get('scheduled_time_str')} (in {wait_seconds/60:.1f} mins)")
 
-        # 3. Check if waiting for this clip would exceed 5 hours runner runtime
+        # 3. Check if waiting for this clip would exceed 5 hours runner runtime.
+        #    Sleep up to our remaining budget BEFORE handing off so >5h waits never tight-loop spawn runners.
         if elapsed_job + wait_seconds > MAX_RUNNER_DURATION_SECONDS:
-            print(f"[Dispatcher] Job approaching 5-hour safety limit ({elapsed_job/3600:.1f}h elapsed).")
+            budget_left = max(0, int(MAX_RUNNER_DURATION_SECONDS - elapsed_job - 120))
+            if budget_left > 180:
+                print(f"[Dispatcher] Next Reel exceeds remaining runner budget; sleeping {budget_left//60}m before handoff...")
+                if _sleep_with_heartbeats(budget_left, next_item.get("title", "Reel")):
+                    continue
+            print(f"[Dispatcher] Job approaching 5-hour safety limit ({(time.time()-start_time)/3600:.1f}h elapsed).")
             print("[Dispatcher] Triggering handoff to fresh cloud runner...")
             spawn_next_runner(gh_pat, repo_name)
             print("[Dispatcher] Handoff complete. Terminating current runner cleanly.")
@@ -172,15 +202,8 @@ def main():
 
         # 4. Sleep with 60-second heartbeats until the exact scheduled second
         if wait_seconds > 0:
-            print(f"[Dispatcher] Entering precision cloud sleep for {wait_seconds} seconds ({wait_seconds//60} mins)...")
-            remaining_sleep = wait_seconds
-            while remaining_sleep > 0:
-                step = min(60, remaining_sleep)
-                time.sleep(step)
-                remaining_sleep -= step
-                mins_left = remaining_sleep // 60
-                if mins_left % 15 == 0 and remaining_sleep > 60:
-                    print(f"[Dispatcher Heartbeat] {mins_left}m remaining until '{next_item.get('title')}' drops...")
+            if _sleep_with_heartbeats(wait_seconds, next_item.get("title", "Reel")):
+                continue
 
         print(f"[Dispatcher] Scheduled timestamp reached for '{next_item.get('title')}'! Proceeding to publish...")
 
